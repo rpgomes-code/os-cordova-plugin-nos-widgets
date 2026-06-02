@@ -16,8 +16,7 @@ Supports **app-pushed data + background self-refresh** and **in-widget interacti
 | Plugin scaffold (manifest, JS API, config) | ✅ done |
 | Android (Glance/Kotlin) — built + validated on emulator | ✅ done ([validation](docs/2026-06-02-android-validation.md)) |
 | Android via MABS 12 (cloud build) | ⏳ pending (validated locally with cordova-android 13) |
-| iOS (WidgetKit) Swift + extension-injection hook | ✅ code written, type-checks clean; hook injects the extension target ([status](docs/2026-06-02-ios-status.md)) |
-| iOS full run on Simulator | ⛔ blocked by missing Xcode iOS 26.4 platform component (`xcodebuild -downloadPlatform iOS`) |
+| iOS (WidgetKit/Swift) — built + run on Simulator | ✅ done: build/embed/install/launch + bridge + App Group shared-data flow ([status](docs/2026-06-02-ios-status.md)) |
 | iOS build & signing via MABS | ⛔ **gated** — needs Apple Dev assets + MABS multi-target signing confirmation |
 
 ## JavaScript API

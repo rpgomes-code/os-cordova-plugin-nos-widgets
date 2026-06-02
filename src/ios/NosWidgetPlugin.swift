@@ -1,5 +1,6 @@
 import Foundation
 import WidgetKit
+import Cordova
 
 /// Cordova <-> Swift bridge (main app target). Exposed to OutSystems as Client Actions.
 /// Writes data into the App Group shared store that the WidgetKit extension reads, and
@@ -66,7 +67,7 @@ class NosWidgetPlugin: CDVPlugin {
     @objc(onWidgetAction:)
     func onWidgetAction(_ command: CDVInvokedUrlCommand) {
         // Kept-alive callback for future widget->app events (e.g. deep-link routing on launch).
-        let result = CDVPluginResult(status: .noResult)!
+        let result = CDVPluginResult(status: .noResult)
         result.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: command.callbackId)
     }

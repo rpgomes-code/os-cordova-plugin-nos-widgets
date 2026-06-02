@@ -39,12 +39,12 @@ module.exports = function (context) {
     const proj = xcode.project(pbxPath);
     proj.parseSync();
 
-    if (proj.pbxTargetByName(EXT_NAME)) {
+    if (extensionTargetExists(proj)) {
         console.log('[nos-widgets] extension target already present; skipping injection.');
         return;
     }
 
-    const mainBundleId = getMainBundleId(proj) || ('com.nos.' + appName.toLowerCase());
+    const mainBundleId = getBundleIdFromConfig(projectRoot) || getMainBundleId(proj) || ('com.nos.' + appName.toLowerCase());
     const appGroup = 'group.' + mainBundleId;
     const extBundleId = mainBundleId + '.widget';
 
@@ -60,8 +60,11 @@ module.exports = function (context) {
     fs.writeFileSync(path.join(extDir, infoPlistName), widgetInfoPlist(appGroup));
     const extEntName = EXT_NAME + '.entitlements';
     fs.writeFileSync(path.join(extDir, extEntName), entitlements(appGroup));
-    const appEntName = appName + '.entitlements';
-    fs.writeFileSync(path.join(iosDir, appName, appEntName), entitlements(appGroup));
+    // App target: add the App Group to cordova's EXISTING entitlements files (already referenced
+    // by the app target as CODE_SIGN_ENTITLEMENTS). Overriding that setting proved flaky.
+    ['Debug', 'Release'].forEach(function (cfg) {
+        addAppGroupToEntitlements(path.join(iosDir, appName, 'Entitlements-' + cfg + '.plist'), appGroup);
+    });
     patchAppInfoPlist(path.join(iosDir, appName, appName + '-Info.plist'), appGroup);
 
     // 3. pbxproj: group + target
@@ -76,33 +79,42 @@ module.exports = function (context) {
     proj.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
 
     swiftFiles.forEach((f) => {
-        proj.addSourceFile(path.join(EXT_NAME, f), { target: target.uuid }, pbxGroupKey);
+        // Path is relative to the group, which already has path EXT_NAME — do NOT prefix it again
+        // (doing so produced "NosWidgetExtension/NosWidgetExtension/Foo.swift" / file-not-found).
+        proj.addSourceFile(f, { target: target.uuid }, pbxGroupKey);
     });
     // Info.plist as a plain group file (referenced via INFOPLIST_FILE, not built)
-    proj.addFile(path.join(EXT_NAME, infoPlistName), pbxGroupKey);
+    proj.addFile(infoPlistName, pbxGroupKey);
 
     ['WidgetKit.framework', 'SwiftUI.framework'].forEach((fw) => {
         proj.addFramework('System/Library/Frameworks/' + fw,
             { target: target.uuid, weak: true, sourceTree: 'SDKROOT' });
     });
 
-    // 4. Embed the extension into the app + dependency
-    const appTargetUuid = proj.getFirstTarget().uuid;
-    proj.addTargetDependency(appTargetUuid, [target.uuid]);
-    proj.addBuildPhase([EXT_NAME + '.appex'], 'PBXCopyFilesBuildPhase',
-        'Embed App Extensions', appTargetUuid, 'app_extension');
+    // 4. node-xcode's addTarget('app_extension') already creates the embed ("Copy Files") phase
+    //    that copies the .appex into the host app — re-adding it caused "Unexpected duplicate
+    //    tasks". It does NOT add the build-order dependency, so add only that here.
+    proj.addTargetDependency(proj.getFirstTarget().uuid, [target.uuid]);
 
     // 5. Build settings for the extension configurations
     applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntName);
-
-    // 6. App target: App Group entitlement
-    setAppEntitlements(proj, appName + '/' + appEntName);
 
     fs.writeFileSync(pbxPath, proj.writeSync());
     console.log('[nos-widgets] WidgetKit extension injected (appGroup=' + appGroup + ', deploymentTarget=' + DEPLOYMENT_TARGET + ').');
 };
 
 // ---------------------------------------------------------------------------- helpers
+
+function extensionTargetExists(proj) {
+    // Reliable idempotency check: scan the native target section for our target by name.
+    // (pbxTargetByName proved unreliable here and let the hook re-inject on every prepare.)
+    const targets = proj.pbxNativeTargetSection();
+    return Object.keys(targets).some(function (k) {
+        const t = targets[k];
+        return t && typeof t === 'object' &&
+            (t.name === EXT_NAME || t.name === '"' + EXT_NAME + '"');
+    });
+}
 
 function loadXcode(projectRoot) {
     const candidates = [
@@ -114,6 +126,19 @@ function loadXcode(projectRoot) {
         try { return require(c); } catch (e) { /* try next */ }
     }
     return null;
+}
+
+function getBundleIdFromConfig(projectRoot) {
+    // config.xml <widget id="..."> is the source of truth for the app bundle id. The pbxproj may
+    // still carry the cordova template default (e.g. com.nos.app) when this after_prepare runs,
+    // which would make the extension id not prefix the app id -> "Embedded binary..." build error.
+    try {
+        const cfg = fs.readFileSync(path.join(projectRoot, 'config.xml'), 'utf8');
+        const m = cfg.match(/<widget[^>]*\bid="([^"]+)"/);
+        return m ? m[1] : null;
+    } catch (e) {
+        return null;
+    }
 }
 
 function getMainBundleId(proj) {
@@ -144,7 +169,9 @@ function applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntNam
             s.GENERATE_INFOPLIST_FILE = 'NO';
             s.SKIP_INSTALL = 'YES';
             s.CODE_SIGN_STYLE = 'Automatic';
-            s.CODE_SIGNING_ALLOWED = 'NO';
+            // Do NOT force CODE_SIGNING_ALLOWED=NO: the extension must be (ad-hoc) signed so its
+            // App Group entitlement is applied — otherwise the shared container isn't created and
+            // the widget can't read what the app wrote (true on the Simulator too).
             s.CLANG_ENABLE_MODULES = 'YES';
             s.ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = 'NO';
         }
@@ -174,6 +201,7 @@ function widgetInfoPlist(appGroup) {
         '<plist version="1.0">',
         '<dict>',
         '  <key>CFBundleDisplayName</key><string>NOS</string>',
+        '  <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>',
         '  <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>',
         '  <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>',
         '  <key>CFBundlePackageType</key><string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>',
@@ -202,6 +230,26 @@ function entitlements(appGroup) {
         '</plist>',
         '',
     ].join('\n');
+}
+
+function addAppGroupToEntitlements(plistPath, appGroup) {
+    let content;
+    try {
+        content = fs.readFileSync(plistPath, 'utf8');
+    } catch (e) {
+        content = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
+            '<plist version="1.0">\n<dict>\n</dict>\n</plist>\n';
+    }
+    if (content.indexOf('application-groups') !== -1) { return; }
+    const group = '\t<key>com.apple.security.application-groups</key>\n\t<array>\n\t\t<string>' +
+        appGroup + '</string>\n\t</array>\n';
+    if (content.match(/<dict\s*\/>/)) {
+        content = content.replace(/<dict\s*\/>/, '<dict>\n' + group + '</dict>');
+    } else {
+        content = content.replace(/<\/dict>/, group + '</dict>');
+    }
+    fs.writeFileSync(plistPath, content);
 }
 
 function patchAppInfoPlist(plistPath, appGroup) {
