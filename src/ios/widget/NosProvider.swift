@@ -19,8 +19,9 @@ struct NosProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NosEntry>) -> Void) {
         let entry = NosEntry(date: Date(), data: NosSharedStore.read())
-        let next = Calendar.current.date(byAdding: .minute, value: 30, to: Date())
-            ?? Date().addingTimeInterval(1800)
+        let mins = NosSharedStore.refreshMinutes()
+        let next = Calendar.current.date(byAdding: .minute, value: mins, to: Date())
+            ?? Date().addingTimeInterval(Double(mins) * 60)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 }

@@ -21,6 +21,7 @@ object WidgetStore {
     private const val KEY_LAST_UPDATED = "last_updated"
     private const val KEY_API_BASE_URL = "api_base_url"
     private const val KEY_SCHEME = "scheme"
+    private const val KEY_REFRESH_MINUTES = "refresh_minutes"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -42,10 +43,11 @@ object WidgetStore {
         )
     }
 
-    fun configure(context: Context, apiBaseUrl: String?, scheme: String?) {
+    fun configure(context: Context, apiBaseUrl: String?, scheme: String?, refreshMinutes: Int?) {
         prefs(context).edit().apply {
             if (apiBaseUrl != null) putString(KEY_API_BASE_URL, apiBaseUrl)
             if (scheme != null) putString(KEY_SCHEME, scheme)
+            if (refreshMinutes != null && refreshMinutes > 0) putInt(KEY_REFRESH_MINUTES, refreshMinutes)
         }.apply()
     }
 
@@ -78,4 +80,5 @@ object WidgetStore {
     fun lastUpdated(context: Context): Long = prefs(context).getLong(KEY_LAST_UPDATED, 0L)
     fun apiBaseUrl(context: Context): String = prefs(context).getString(KEY_API_BASE_URL, "").orEmpty()
     fun scheme(context: Context): String = prefs(context).getString(KEY_SCHEME, "nosapp").orEmpty()
+    fun refreshMinutes(context: Context): Int = prefs(context).getInt(KEY_REFRESH_MINUTES, 30)
 }

@@ -73,7 +73,9 @@ class RefreshWorker(context: Context, params: WorkerParameters) :
         private const val PERIODIC = "nos_widget_refresh_periodic"
 
         fun enqueuePeriodic(context: Context) {
-            val request = PeriodicWorkRequestBuilder<RefreshWorker>(30, TimeUnit.MINUTES).build()
+            // WorkManager enforces a 15-minute minimum period; clamp the configured value to it.
+            val minutes = WidgetStore.refreshMinutes(context).coerceAtLeast(15).toLong()
+            val request = PeriodicWorkRequestBuilder<RefreshWorker>(minutes, TimeUnit.MINUTES).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 PERIODIC, ExistingPeriodicWorkPolicy.UPDATE, request
             )

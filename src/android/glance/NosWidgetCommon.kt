@@ -42,6 +42,7 @@ class NosColors(context: Context) {
     val muted = cp("nos_muted")
     val green = cp("nos_green")
     val track = cp("nos_track")
+    val onGreen = cp("nos_on_green")
 }
 
 /** Parsed widget data from the shared store payload (see the demo app for the JSON shape). */

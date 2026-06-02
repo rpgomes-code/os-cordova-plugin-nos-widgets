@@ -49,8 +49,11 @@ class NosWidgetPlugin : CordovaPlugin() {
                 WidgetStore.configure(
                     context,
                     opts.optString("apiBaseUrl").ifEmpty { null },
-                    opts.optString("scheme").ifEmpty { null }
+                    opts.optString("scheme").ifEmpty { null },
+                    opts.optInt("refreshMinutes", 0).takeIf { it > 0 }
                 )
+                // Reschedule the background refresh so a changed interval takes effect.
+                RefreshWorker.enqueuePeriodic(context)
                 callbackContext.success()
             }
 

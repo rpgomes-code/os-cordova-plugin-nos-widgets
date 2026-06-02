@@ -12,7 +12,9 @@ var NosWidgets = {
 
     /**
      * One-time configuration. Call once after the app starts.
-     * @param {{appGroup?: string, scheme?: string, apiBaseUrl?: string}} options
+     * @param {{appGroup?: string, scheme?: string, apiBaseUrl?: string, refreshMinutes?: number}} options
+     *   - scheme: deep-link URL scheme the widget uses (should match NosWidgetUrlScheme at build time)
+     *   - refreshMinutes: background self-refresh cadence (Android enforces a 15-minute minimum)
      */
     configure: function (options, success, error) {
         exec(success, error, SERVICE, 'configure', [options || {}]);

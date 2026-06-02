@@ -7,4 +7,6 @@
     <color name="nos_muted">#FF74757D</color>
     <color name="nos_green">#FF6EA514</color>
     <color name="nos_track">#FFDDDEE3</color>
+    <!-- Text/icon drawn ON the green accent — dark in both light & dark for contrast. -->
+    <color name="nos_on_green">#FF1E1F27</color>
 </resources>

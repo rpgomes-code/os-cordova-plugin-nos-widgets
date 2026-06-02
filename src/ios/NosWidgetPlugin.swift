@@ -20,6 +20,7 @@ class NosWidgetPlugin: CDVPlugin {
         let opts = command.argument(at: 0) as? [String: Any] ?? [:]
         if let scheme = opts["scheme"] as? String { store?.set(scheme, forKey: "scheme") }
         if let api = opts["apiBaseUrl"] as? String { store?.set(api, forKey: "apiBaseUrl") }
+        if let m = opts["refreshMinutes"] as? NSNumber, m.intValue > 0 { store?.set(m.intValue, forKey: "refreshMinutes") }
         reload()
         sendOk(command)
     }

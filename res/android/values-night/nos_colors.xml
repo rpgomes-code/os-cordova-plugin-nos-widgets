@@ -7,4 +7,5 @@
     <color name="nos_muted">#FF94959D</color>
     <color name="nos_green">#FFBAD80A</color>
     <color name="nos_track">#FF404149</color>
+    <color name="nos_on_green">#FF1E1F27</color>
 </resources>

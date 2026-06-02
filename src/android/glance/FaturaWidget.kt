@@ -1,7 +1,6 @@
 package com.nos.widgets.glance
 
 import android.content.Context
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
@@ -22,7 +21,6 @@ import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import com.nos.widgets.work.RefreshWorker
 
 /** Fatura — medium/wide: next invoice amount + due date + "Pagar" action. */
@@ -56,7 +54,7 @@ class FaturaWidget : GlanceAppWidget() {
                         ) {
                             Text(
                                 "Pagar",
-                                style = TextStyle(color = ColorProvider(Color(0xFF1E1F27)), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                style = TextStyle(color = c.onGreen, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                             )
                         }
                     }

@@ -13,14 +13,20 @@ struct NosData {
 }
 
 enum NosSharedStore {
+    /// Authoritative value is the `NosAppGroup` Info.plist key the plugin hook writes at build time.
+    /// The fallback derives `group.<app bundle id>` by dropping the last component of this (extension)
+    /// target's bundle id — suffix-agnostic, so it works for any configured widget bundle suffix.
     static var appGroup: String {
-        (Bundle.main.object(forInfoDictionaryKey: "NosAppGroup") as? String)
-            ?? "group.\(Bundle.main.bundleIdentifier?.replacingOccurrences(of: ".widget", with: "") ?? "com.nos.widgethost")"
+        if let g = Bundle.main.object(forInfoDictionaryKey: "NosAppGroup") as? String { return g }
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.nos.widgethost.widget"
+        let appId = bundleId.contains(".") ? String(bundleId[..<bundleId.lastIndex(of: ".")!]) : bundleId
+        return "group.\(appId)"
     }
 
     private static var defaults: UserDefaults? { UserDefaults(suiteName: appGroup) }
 
     static func scheme() -> String { defaults?.string(forKey: "scheme") ?? "nosapp" }
+    static func refreshMinutes() -> Int { let m = defaults?.integer(forKey: "refreshMinutes") ?? 0; return m > 0 ? m : 30 }
 
     static func read() -> NosData {
         let d = defaults

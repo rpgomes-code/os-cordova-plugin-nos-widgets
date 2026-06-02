@@ -18,6 +18,27 @@
         <clobbers target="cordova.plugins.nosWidgets"/>
     </js-module>
 
+    <!-- ===================== CONFIGURABLE (OutSystems Extensibility) =====================
+         The iOS after_prepare hook reads these OPTIONAL config.xml preferences (every one has a
+         safe built-in fallback, so a normal build needs none of them). Set them per-app from the
+         OutSystems Extensibility Configuration "preferences" section, for example:
+           <preference name="NosWidgetAppGroup"            value="group.com.acme.app" />
+           <preference name="NosWidgetTeamId"              value="ABCDE12345" />
+           <preference name="NosWidgetProfileSpecifier"    value="ACME Widget Dev" />
+           <preference name="NosWidgetProvisioningProfile" value="profiles/widget.mobileprovision" />
+           <preference name="NosWidgetUrlScheme"           value="acmeapp" />        (deep-link scheme)
+           <preference name="NosWidgetBundleSuffix"        value="widget" />         (ext bundle-id suffix)
+           <preference name="NosWidgetIosDeploymentTarget" value="16.0" />           (default 14.0)
+           <preference name="NosWidgetDisplayName"         value="ACME" />           (widget gallery name)
+           <preference name="NosWidgetExtensionName"       value="AcmeWidgetExtension" />
+         The signing trio (TeamId + ProfileSpecifier, plus optional ProvisioningProfile) switches the
+         widget EXTENSION target to Manual code-signing for MABS/device; omit them for Simulator.
+         (The background-refresh interval is a RUNTIME setting via the JS configure({refreshMinutes}) API,
+         not a build preference.)
+         They are read from config.xml (not declared as plugin <preference> variables) on purpose:
+         cordova treats a plugin <preference> as a MANDATORY install variable, which would force
+         every consuming app to supply all four even when they only want a Simulator build. -->
+
     <!-- ================================ ANDROID ================================ -->
     <platform name="android">
 
@@ -126,8 +147,9 @@
             - creates the app-extension target + build phases
             - adds src/ios/widget/*.swift to that target
             - writes App Group entitlements to BOTH targets
-            - sets the extension deployment target to iOS 14
-          NOTE: MABS device signing of this 2nd target is gated (see design §3).
+            - sets the extension deployment target + signing (see hook header)
+          Signing of this 2nd target under MABS is configurable via the preferences above
+          (NosWidgetTeamId / NosWidgetProfileSpecifier / NosWidgetProvisioningProfile).
         -->
         <hook type="after_prepare" src="hooks/ios-add-widget-extension.js"/>
     </platform>
