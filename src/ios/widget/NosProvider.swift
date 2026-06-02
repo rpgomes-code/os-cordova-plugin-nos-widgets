@@ -3,14 +3,14 @@ import SwiftUI
 
 struct NosEntry: TimelineEntry {
     let date: Date
-    let data: NosWidgetData
+    let data: NosData
 }
 
-/// Reads the App Group store and schedules a periodic refresh. In production, getTimeline
-/// is where a background fetch (with the shared token) would run before building the entry.
+/// Shared timeline provider for all three widgets. Reads the App Group store and schedules a
+/// periodic refresh; in production getTimeline is where a background fetch would run.
 struct NosProvider: TimelineProvider {
     func placeholder(in context: Context) -> NosEntry {
-        NosEntry(date: Date(), data: NosWidgetData(loggedIn: false, title: ""))
+        NosEntry(date: Date(), data: NosSharedStore.read())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (NosEntry) -> Void) {

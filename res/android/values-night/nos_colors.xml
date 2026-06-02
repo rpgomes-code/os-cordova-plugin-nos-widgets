@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NOS palette — DARK mode (from nos.pt). Auto-applied when the system is in dark mode. -->
+<resources>
+    <color name="nos_bg">#FF1E1F27</color>
+    <color name="nos_surface">#FF2A2A33</color>
+    <color name="nos_text">#FFFFFFFF</color>
+    <color name="nos_muted">#FF94959D</color>
+    <color name="nos_green">#FFBAD80A</color>
+    <color name="nos_track">#FF404149</color>
+</resources>

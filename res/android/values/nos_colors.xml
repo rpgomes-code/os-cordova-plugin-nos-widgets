@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NOS palette — LIGHT mode (from nos.pt). values-night/ holds the dark overrides. -->
+<resources>
+    <color name="nos_bg">#FFFFFFFF</color>
+    <color name="nos_surface">#FFF2F2F4</color>
+    <color name="nos_text">#FF1E1F27</color>
+    <color name="nos_muted">#FF74757D</color>
+    <color name="nos_green">#FF6EA514</color>
+    <color name="nos_track">#FFDDDEE3</color>
+</resources>

@@ -47,29 +47,47 @@
             </feature>
         </config-file>
 
-        <!-- Widget receiver (Glance) -->
+        <!-- Three Glance widget receivers: Saldo / Fatura / Consumos -->
         <config-file target="AndroidManifest.xml" parent="/manifest/application">
-            <receiver android:name="com.nos.widgets.glance.NosWidgetReceiver" android:exported="true">
+            <receiver android:name="com.nos.widgets.glance.SaldoWidgetReceiver" android:exported="true">
                 <intent-filter>
                     <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
                 </intent-filter>
-                <meta-data android:name="android.appwidget.provider"
-                           android:resource="@xml/nos_widget_info"/>
+                <meta-data android:name="android.appwidget.provider" android:resource="@xml/nos_saldo_info"/>
+            </receiver>
+            <receiver android:name="com.nos.widgets.glance.FaturaWidgetReceiver" android:exported="true">
+                <intent-filter>
+                    <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                </intent-filter>
+                <meta-data android:name="android.appwidget.provider" android:resource="@xml/nos_fatura_info"/>
+            </receiver>
+            <receiver android:name="com.nos.widgets.glance.ConsumosWidgetReceiver" android:exported="true">
+                <intent-filter>
+                    <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                </intent-filter>
+                <meta-data android:name="android.appwidget.provider" android:resource="@xml/nos_consumos_info"/>
             </receiver>
         </config-file>
 
         <!-- Kotlin sources -->
         <source-file src="src/android/NosWidgetPlugin.kt" target-dir="app/src/main/java/com/nos/widgets"/>
-        <source-file src="src/android/glance/NosWidget.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
-        <source-file src="src/android/glance/NosWidgetReceiver.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/glance/NosWidgetCommon.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/glance/SaldoWidget.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/glance/FaturaWidget.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/glance/ConsumosWidget.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
         <source-file src="src/android/work/RefreshWorker.kt" target-dir="app/src/main/java/com/nos/widgets/work"/>
         <source-file src="src/android/action/RefreshAction.kt" target-dir="app/src/main/java/com/nos/widgets/action"/>
         <source-file src="src/android/store/WidgetStore.kt" target-dir="app/src/main/java/com/nos/widgets/store"/>
 
         <!-- Widget metadata (NOT layout — Glance renders the UI in Kotlin) -->
-        <resource-file src="res/android/xml/nos_widget_info.xml" target="res/xml/nos_widget_info.xml"/>
+        <resource-file src="res/android/xml/nos_saldo_info.xml" target="res/xml/nos_saldo_info.xml"/>
+        <resource-file src="res/android/xml/nos_fatura_info.xml" target="res/xml/nos_fatura_info.xml"/>
+        <resource-file src="res/android/xml/nos_consumos_info.xml" target="res/xml/nos_consumos_info.xml"/>
         <resource-file src="res/android/values/nos_widget_strings.xml" target="res/values/nos_widget_strings.xml"/>
         <resource-file src="res/android/drawable/nos_widget_preview.xml" target="res/drawable/nos_widget_preview.xml"/>
+        <!-- NOS palette with system light/dark (values + values-night) -->
+        <resource-file src="res/android/values/nos_colors.xml" target="res/values/nos_colors.xml"/>
+        <resource-file src="res/android/values-night/nos_colors.xml" target="res/values-night/nos_colors.xml"/>
     </platform>
 
     <!-- ================================== iOS ================================== -->

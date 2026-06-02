@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>NOS Widgets</title>
+  <style>
+    :root {
+      --bg:#FFFFFF; --surface:#F2F2F4; --text:#1E1F27; --muted:#74757D;
+      --green:#6EA514; --on-green:#1E1F27; --border:#DDDEE3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:#1E1F27; --surface:#2A2A33; --text:#FFFFFF; --muted:#94959D;
+        --green:#BAD80A; --on-green:#1E1F27; --border:#3A3B44;
+      }
+    }
+    * { box-sizing:border-box; }
+    body { font-family:-apple-system,"Segoe UI",Roboto,sans-serif; margin:0; padding:18px;
+           background:var(--bg); color:var(--text); font-size:16px; }
+    h1 { color:var(--green); font-size:22px; margin:0; letter-spacing:.5px; }
+    .sub { color:var(--muted); font-size:12px; letter-spacing:3px; margin:2px 0 16px; }
+    fieldset { border:1px solid var(--border); border-radius:10px; margin:0 0 14px; padding:10px 14px; }
+    legend { color:var(--green); font-size:12px; font-weight:700; padding:0 6px; text-transform:uppercase; letter-spacing:1px; }
+    .row { display:flex; gap:10px; margin:8px 0; align-items:center; }
+    label { flex:0 0 100px; color:var(--muted); font-size:13px; }
+    input { flex:1; min-width:0; padding:10px; border:1px solid var(--border); border-radius:8px;
+            background:var(--bg); color:var(--text); font-size:15px; }
+    .btns { display:flex; flex-wrap:wrap; gap:10px; }
+    button { flex:1 1 46%; padding:14px; font-size:15px; font-weight:700; border:0; border-radius:10px;
+             background:var(--green); color:var(--on-green); }
+    button.sec { background:var(--surface); color:var(--text); border:1px solid var(--border); }
+    #log { white-space:pre-wrap; background:var(--surface); border-left:3px solid var(--green);
+           border-radius:8px; padding:10px; margin-top:14px; font-size:12px; min-height:54px; }
+  </style>
+</head>
+<body>
+  <h1>NOS</h1>
+  <div class="sub">W I D G E T S</div>
+
+  <fieldset>
+    <legend>Conta</legend>
+    <div class="row"><label>Plano</label><input id="plan" value="NOS 5G"></div>
+    <div class="row"><label>Saldo</label><input id="balance" value="42,50 €"></div>
+    <div class="row"><label>Token</label><input id="token" value="demo-token-123"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Dados</legend>
+    <div class="row"><label>Usado</label><input id="dataUsed" type="number" step="0.1" value="12.4"></div>
+    <div class="row"><label>Total</label><input id="dataTotal" type="number" value="30"></div>
+    <div class="row"><label>Unidade</label><input id="dataUnit" value="GB"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Voz &amp; SMS</legend>
+    <div class="row"><label>Min usados</label><input id="minUsed" type="number" value="230"></div>
+    <div class="row"><label>Min total</label><input id="minTotal" type="number" value="1000"></div>
+    <div class="row"><label>SMS usados</label><input id="smsUsed" type="number" value="45"></div>
+    <div class="row"><label>SMS total</label><input id="smsTotal" type="number" value="500"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Fatura</legend>
+    <div class="row"><label>Valor</label><input id="billAmount" value="38,90 €"></div>
+    <div class="row"><label>Vence</label><input id="billDue" value="15 Jun"></div>
+  </fieldset>
+
+  <div class="btns">
+    <button id="update">Atualizar widgets</button>
+    <button id="refresh" class="sec">Refresh</button>
+    <button id="logout" class="sec">Logout</button>
+    <button id="isadded" class="sec">Widget adicionado?</button>
+  </div>
+
+  <div id="log">booting…</div>
+
+  <script src="cordova.js"></script>
+  <script>
+    function log(m){var l=document.getElementById('log');l.textContent=new Date().toLocaleTimeString()+'  '+m+'\n'+l.textContent;}
+    function val(id){return document.getElementById(id).value;}
+    function num(id){var n=parseFloat(val(id));return isNaN(n)?0:n;}
+    function buildPayload(){
+      return {
+        plan: val('plan'),
+        balance: val('balance'),
+        data: { used: num('dataUsed'), total: num('dataTotal'), unit: val('dataUnit') },
+        minutes: { used: num('minUsed'), total: num('minTotal') },
+        sms: { used: num('smsUsed'), total: num('smsTotal') },
+        bill: { amount: val('billAmount'), due: val('billDue') }
+      };
+    }
+    document.addEventListener('deviceready', function(){
+      log('deviceready');
+      var w = cordova.plugins.nosWidgets;
+      w.configure({ scheme:'nosapp', apiBaseUrl:'' }, function(){log('configured');}, function(e){log('configure err: '+e);});
+      w.onWidgetAction(function(ev){log('widget action: '+JSON.stringify(ev));}, function(e){log('onAction err: '+e);});
+
+      function push(){
+        w.writeData({ token: val('token'), payload: buildPayload() },
+          function(){log('widgets atualizados ✓');}, function(e){log('writeData err: '+e);});
+      }
+      setTimeout(push, 1200); // initial push so the widgets have data
+
+      document.getElementById('update').onclick = push;
+      document.getElementById('refresh').onclick = function(){ w.refreshNow(function(){log('refreshNow OK');}, function(e){log('refresh err: '+e);}); };
+      document.getElementById('logout').onclick = function(){ w.writeData({token:'', payload:{}}, function(){log('logout OK');}, function(e){log('logout err: '+e);}); };
+      document.getElementById('isadded').onclick = function(){ w.isWidgetAdded(function(r){log('isWidgetAdded: '+r);}, function(e){log('isAdded err: '+e);}); };
+    }, false);
+  </script>
+</body>
+</html>

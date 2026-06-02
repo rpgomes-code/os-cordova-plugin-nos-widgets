@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Distinct filename so it merges with (does not overwrite) the host app's strings.xml. -->
 <resources>
-    <string name="nos_widget_description">NOS account widget</string>
+    <string name="nos_saldo_desc">NOS — saldo</string>
+    <string name="nos_fatura_desc">NOS — próxima fatura</string>
+    <string name="nos_consumos_desc">NOS — consumos</string>
 </resources>

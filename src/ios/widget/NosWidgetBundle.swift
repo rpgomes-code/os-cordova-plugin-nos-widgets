@@ -4,6 +4,8 @@ import SwiftUI
 @main
 struct NosWidgetBundle: WidgetBundle {
     var body: some Widget {
-        NosWidget()
+        SaldoWidget()
+        FaturaWidget()
+        ConsumosWidget()
     }
 }

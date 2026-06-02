@@ -19,10 +19,14 @@ Supports **app-pushed data + background self-refresh** and **in-widget interacti
 | iOS (WidgetKit/Swift) — built + run on Simulator | ✅ done: widget renders "Saldo: 42,50 €" on the home screen ([status](docs/2026-06-02-ios-status.md)) |
 | iOS build & signing via MABS | ⛔ **gated** — needs Apple Dev assets + MABS multi-target signing confirmation |
 
-## Branding
+## Branding & widgets
 
 NOS palette (dark `#1E1F27` + lime `#BAD80A`, sampled from nos.pt) applied to the widget UI on
 both platforms, the test app, and the launcher icons — see [docs/branding.md](docs/branding.md).
+
+Ships **three widgets** in distinct shapes — **Saldo** (small), **Fatura** (medium), **Consumos**
+(large) — with **system light/dark** that follows the OS live, and a **data-driven demo app** (edit
+values, hit *Atualizar widgets*, no rebuild). See [docs/widgets.md](docs/widgets.md).
 
 ## JavaScript API
 

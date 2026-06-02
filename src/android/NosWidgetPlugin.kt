@@ -8,8 +8,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import androidx.core.content.ContextCompat
 import com.nos.widgets.action.RefreshAction
-import com.nos.widgets.glance.NosWidget
-import com.nos.widgets.glance.NosWidgetReceiver
+import com.nos.widgets.glance.ConsumosWidgetReceiver
+import com.nos.widgets.glance.FaturaWidgetReceiver
+import com.nos.widgets.glance.SaldoWidgetReceiver
+import com.nos.widgets.glance.updateAllNosWidgets
 import com.nos.widgets.store.WidgetStore
 import com.nos.widgets.work.RefreshWorker
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +62,7 @@ class NosWidgetPlugin : CordovaPlugin() {
                 android.util.Log.d("NosWidget", "plugin.writeData tokenSet=${token.isNotEmpty()} loggedIn=${WidgetStore.isLoggedIn(context)} payload=$payload")
                 scope.launch {
                     try {
-                        NosWidget.updateAllWidgets(context)
+                        updateAllNosWidgets(context)
                         android.util.Log.d("NosWidget", "updateAll OK")
                     } catch (e: Throwable) {
                         android.util.Log.e("NosWidget", "updateAll FAILED", e)
@@ -76,10 +78,14 @@ class NosWidgetPlugin : CordovaPlugin() {
             }
 
             "isWidgetAdded" -> {
-                val ids = AppWidgetManager.getInstance(context)
-                    .getAppWidgetIds(ComponentName(context, NosWidgetReceiver::class.java))
+                val mgr = AppWidgetManager.getInstance(context)
+                val added = listOf(
+                    SaldoWidgetReceiver::class.java,
+                    FaturaWidgetReceiver::class.java,
+                    ConsumosWidgetReceiver::class.java
+                ).any { mgr.getAppWidgetIds(ComponentName(context, it)).isNotEmpty() }
                 callbackContext.sendPluginResult(
-                    PluginResult(PluginResult.Status.OK, ids.isNotEmpty())
+                    PluginResult(PluginResult.Status.OK, added)
                 )
             }
 

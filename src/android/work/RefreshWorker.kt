@@ -7,7 +7,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.nos.widgets.glance.NosWidget
+import com.nos.widgets.glance.updateAllNosWidgets
 import com.nos.widgets.store.WidgetStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,7 +29,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) :
 
         if (token.isEmpty()) {
             WidgetStore.setLoggedOut(context)
-            NosWidget.updateAllWidgets(context)
+            updateAllNosWidgets(context)
             return Result.success()
         }
 
@@ -43,7 +43,7 @@ class RefreshWorker(context: Context, params: WorkerParameters) :
             }
         }
 
-        NosWidget.updateAllWidgets(context)
+        updateAllNosWidgets(context)
         return Result.success()
     }
 
