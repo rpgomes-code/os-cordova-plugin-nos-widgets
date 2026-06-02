@@ -1,0 +1,21 @@
+# Keep the published / MABS-fetched plugin lean: ship only what the cordova build needs
+# (plugin.xml, www/, src/, hooks/, res/, package.json) + the vendored node_modules (xcode).
+# IMPORTANT: do NOT list node_modules here — it is the vendored `xcode` the iOS hook needs.
+
+docs/
+demo/
+brand/
+*.log
+.DS_Store
+
+# host-app build artifacts (shouldn't be in the plugin repo, but exclude defensively)
+platforms/
+plugins/
+build/
+.gradle/
+*.apk
+*.aab
+*.ipa
+.idea/
+.vscode/
+xcuserdata/

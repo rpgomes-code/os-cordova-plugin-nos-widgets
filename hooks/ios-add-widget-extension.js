@@ -118,12 +118,23 @@ function extensionTargetExists(proj) {
 
 function loadXcode(projectRoot) {
     const candidates = [
+        // 1. Vendored copy committed inside the plugin (node_modules/, declared in
+        //    bundleDependencies). MABS fetches the plugin from git and does NOT `npm install` its
+        //    dependencies, so this committed copy is the primary, self-contained source.
+        path.resolve(__dirname, '..', 'node_modules', 'xcode'),
+        // 2. Fallbacks — `xcode` is also a dependency of cordova-ios, so it is present in the host
+        //    project's node_modules during ANY iOS build (including MABS) even if, on some npm
+        //    version, the vendored copy were stripped while packing the plugin.
         'xcode',
         path.join(projectRoot, 'node_modules', 'xcode'),
         path.join(projectRoot, 'node_modules', 'cordova-ios', 'node_modules', 'xcode'),
     ];
     for (const c of candidates) {
-        try { return require(c); } catch (e) { /* try next */ }
+        try {
+            const mod = require(c);
+            console.log('[nos-widgets] resolved xcode from: ' + require.resolve(c));
+            return mod;
+        } catch (e) { /* try next candidate */ }
     }
     return null;
 }

@@ -32,5 +32,8 @@
   "dependencies": {
     "xcode": "^3.0.1"
   },
-  "_comment_dependencies": "MABS does NOT run `npm install` for plugin dependencies. `xcode` (used by hooks/ios-add-widget-extension.js) must be VENDORED into the plugin (committed under node_modules/ or inlined) for the hook to resolve it inside the MABS cloud build. This declaration is for local development only."
+  "bundleDependencies": [
+    "xcode"
+  ],
+  "_comment_dependencies": "The iOS after_prepare hook (hooks/ios-add-widget-extension.js) uses `xcode` to inject the WidgetKit extension target. MABS fetches this plugin from git and does NOT run `npm install` on plugin deps, so `xcode` + its dependency tree are VENDORED: committed under node_modules/ (see .gitignore) and declared in bundleDependencies. cordova-fetch copies node_modules into plugins/<id>/ on `cordova plugin add` (verified end-to-end), and the hook requires it from there — with cordova-ios's own bundled `xcode` as a fallback."
 }

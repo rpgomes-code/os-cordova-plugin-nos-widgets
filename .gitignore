@@ -1,8 +1,10 @@
 # OS
 .DS_Store
 
-# Node (local dev only — note: `xcode` may be vendored intentionally; see package.json)
-node_modules/
+# Node — the iOS hook needs `xcode` to inject the WidgetKit target, but MABS does not run
+# `npm install` for plugin deps. So node_modules/ (xcode + its deps) is VENDORED and committed
+# here; cordova-fetch copies it into the installed plugin and the hook resolves it from there.
+# node_modules/ is therefore intentionally NOT ignored.
 npm-debug.log*
 
 # Cordova / build artifacts
