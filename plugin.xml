@@ -87,6 +87,9 @@
         </config-file>
         <source-file src="src/ios/NosWidgetPlugin.swift"/>
 
+        <!-- App target uses WidgetCenter to reload the widget timeline -->
+        <framework src="WidgetKit.framework" weak="true"/>
+
         <!-- Custom URL scheme for widget deep links -->
         <config-file target="*-Info.plist" parent="CFBundleURLTypes">
             <array>
