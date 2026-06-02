@@ -34,9 +34,18 @@ Follows the OS automatically (palette from nos.pt):
 
 Saldo widget, same device, system theme toggled:
 
-| Dark | Light |
+| Android — dark | Android — light |
 |---|---|
 | ![dark](img/android-saldo-dark.png) | ![light](img/android-saldo-light.png) |
+
+iOS — all three widgets placed (light), and Saldo toggled to dark live:
+
+| iOS — Consumos + Fatura (light) | iOS — Saldo (light) | iOS — Saldo (dark) |
+|---|---|---|
+| ![ios](img/ios-widgets-light.png) | ![ios](img/ios-saldo-light.png) | ![ios](img/ios-saldo-dark.png) |
+
+The iOS demo app follows the system too — [light](img/ios-app-light.png) / [dark](img/ios-app-dark.png)
+(WKWebView honors `prefers-color-scheme`).
 
 ## Data model (pushed via `writeData`)
 
