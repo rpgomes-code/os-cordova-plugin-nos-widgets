@@ -1,6 +1,6 @@
 # iOS validation log (Phase 3)
 
-**Date:** 2026-06-02 · **Result:** ✅ iOS path validated end-to-end on the Simulator (build → embed → install → launch → bridge → App Group data flow). The only un-captured step is the literal "drag widget onto home screen" gesture, blocked by macOS automation permissions (not the plugin).
+**Date:** 2026-06-02 · **Result:** ✅ iOS path validated end-to-end on the Simulator: build → embed → install → launch → bridge → App Group data flow → **widget renders "Saldo: 42,50 €" on the home screen**.
 
 ## What was proven
 
@@ -12,8 +12,9 @@
 | Extension **embedded** (`.appex`) + **installs** + app **launches** | ✅ | `simctl install/launch` OK; appex in `PlugIns/` |
 | Cordova⇆Swift **bridge** works | ✅ | `configured` + `writeData OK` ([screenshot](img/ios-app-bridge.png)) |
 | **App Group SHARED container** data flow (app → widget) | ✅ | `Containers/Shared/AppGroup/.../group.com.nos.widgethost.plist` holds `loggedIn=true`, `payload={"title":"Saldo: 42,50 €"}` |
-| Widget renders that data | ✅ (by construction) | widget's `NosSharedStore.read()` reads the same suite the app wrote |
-| Widget visible on the Simulator home screen | ⚠️ not captured | needs a UI-automation tool (idb) or a manual drag — see below |
+| Widget renders that data on the home screen | ✅ confirmed | shows **"Saldo: 42,50 €"** + the iOS 17 interactive ⟳ button |
+
+![iOS widget on home screen](img/ios-widget-logged-in.png)
 
 ![iOS bridge](img/ios-app-bridge.png)
 
@@ -47,13 +48,12 @@ Also: the Cordova Swift bridge needs `import Cordova` (cordova-ios 8 SwiftPM mod
 - Built directly with `xcodebuild` against a concrete sim (cordova's *generic* simulator
   destination maps to a runtime version that may not be installed)
 
-## The one remaining step (widget on home screen)
+## Widget on home screen — confirmed
 
-Placing the widget needs to drive the Simulator UI (long-press → + → search "NOS" → Add).
-`osascript`/System Events is denied ("not allowed assistive access") and `idb` isn't installed,
-so it couldn't be automated here. A developer does it manually in seconds, or install
-`idb`/`idb-companion` to script `idb ui tap`. The data it would display is already confirmed
-present in the shared container.
+The widget renders **"Saldo: 42,50 €"** with the iOS 17 interactive refresh button on the
+Simulator home screen (screenshot above). Only the *placement* gesture needed a human here —
+automating it would need a UI tool (`idb ui tap`), since `osascript`/System Events was denied
+("not allowed assistive access"). The widget was placed manually and then captured.
 
 ## Still gated (unchanged, design §3)
 
