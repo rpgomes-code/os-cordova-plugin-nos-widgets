@@ -1,6 +1,12 @@
 import WidgetKit
 import SwiftUI
 
+/// NOS brand palette (from nos.pt).
+private extension Color {
+    static let nosDark = Color(red: 30 / 255, green: 31 / 255, blue: 39 / 255)    // #1E1F27
+    static let nosGreen = Color(red: 186 / 255, green: 216 / 255, blue: 10 / 255) // #BAD80A
+}
+
 /// The widget UI — 100% SwiftUI/Swift. Two states from the App Group store:
 ///  - logged out: a "please log in" prompt (tap opens the app via widgetURL)
 ///  - logged in:  the pushed title + (iOS 17+) an interactive refresh button
@@ -18,19 +24,19 @@ struct NosWidgetEntryView: View {
                                 Image(systemName: "arrow.clockwise")
                             }
                             .buttonStyle(.plain)
-                            .foregroundColor(Color(red: 0, green: 0.4, blue: 0.8))
+                            .foregroundColor(.nosGreen)
                         }
                     }
                     Spacer()
                     Text(entry.data.title.isEmpty ? "Sem dados" : entry.data.title)
                         .font(.title3).bold()
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                     Spacer()
                 }
             } else {
                 Text("Por favor faça login na App")
                     .font(.headline)
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .multilineTextAlignment(.center)
             }
         }
@@ -45,11 +51,11 @@ struct NosWidget: Widget {
         StaticConfiguration(kind: kind, provider: NosProvider()) { entry in
             if #available(iOS 17.0, *) {
                 NosWidgetEntryView(entry: entry)
-                    .containerBackground(.white, for: .widget)
+                    .containerBackground(Color.nosDark, for: .widget)
             } else {
                 NosWidgetEntryView(entry: entry)
                     .padding()
-                    .background(Color.white)
+                    .background(Color.nosDark)
             }
         }
         .configurationDisplayName("NOS")

@@ -88,7 +88,7 @@ class NosWidget : GlanceAppWidget() {
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(Color(0xFFFFFFFF))
+                .background(Color(0xFF1E1F27)) // NOS dark (nos.pt)
                 .padding(12.dp)
                 .then(openApp),
             contentAlignment = Alignment.Center
@@ -96,7 +96,7 @@ class NosWidget : GlanceAppWidget() {
             if (!loggedIn) {
                 Text(
                     text = "Por favor faça login na App",
-                    style = TextStyle(color = ColorProvider(Color(0xFF222222)), fontSize = 16.sp)
+                    style = TextStyle(color = ColorProvider(Color(0xFFFFFFFF)), fontSize = 16.sp)
                 )
             } else {
                 Column(modifier = GlanceModifier.fillMaxSize()) {
@@ -107,15 +107,15 @@ class NosWidget : GlanceAppWidget() {
                         Text(
                             text = "⟳",
                             modifier = GlanceModifier.clickable(actionRunCallback<RefreshAction>()),
-                            style = TextStyle(color = ColorProvider(Color(0xFF0066CC)), fontSize = 20.sp)
+                            style = TextStyle(color = ColorProvider(Color(0xFFBAD80A)), fontSize = 22.sp)
                         )
                     }
                     Box(modifier = GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             text = title.ifEmpty { "Sem dados" },
                             style = TextStyle(
-                                color = ColorProvider(Color(0xFF111111)),
-                                fontSize = 20.sp,
+                                color = ColorProvider(Color(0xFFFFFFFF)),
+                                fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         )
