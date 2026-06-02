@@ -52,3 +52,29 @@ Notes learned applying it:
 - `background` must be an **image** (a solid `#1E1F27` PNG), not a hex string — cordova-android
   references `@mipmap/ic_launcher_background`, so a hex value fails AAPT resource linking.
 - iOS accepts a single 1024² icon (`<icon src>`); cordova-ios 8 generates the asset catalog.
+
+## Launch / splash screen
+
+Both platforms show a NOS-dark launch screen.
+
+**iOS** — full NOS WIDGETS logo centred on `#1E1F27`. Verified: the
+`SplashScreenBackgroundColor.colorset` resolves to `0x1E/0x1F/0x27` and `LaunchStoryboard.imageset`
+holds the logo. See [ios-launch-screen.png](img/ios-launch-screen.png).
+
+```xml
+<platform name="ios">
+  <preference name="SplashScreenBackgroundColor" value="#1E1F27" />
+  <!-- the logo is placed into App/Assets.xcassets/LaunchStoryboard.imageset -->
+</platform>
+```
+
+**Android** — Android 12+ system splash: the brand mark on `#1E1F27`. It flashes briefly because
+the WebView loads instantly, so it's hard to screenshot on this lightweight test app, but the
+asset (`ic_cdv_splashscreen.png`) and background are generated from:
+
+```xml
+<platform name="android">
+  <preference name="AndroidWindowSplashScreenBackground" value="#1E1F27" />
+  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/android/splash-icon.png" />
+</platform>
+```
