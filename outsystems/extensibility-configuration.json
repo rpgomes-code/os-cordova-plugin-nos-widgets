@@ -1,0 +1,22 @@
+{
+  "plugin": {
+    "url": "https://github.com/nos/os-cordova-plugin-nos-widgets.git",
+    "comment": "Point this at the Git URL (and optionally a #tag/commit) of THIS plugin. Paste this JSON into the OutSystems mobile module's 'Extensibility Configuration' property."
+  },
+  "preferences": {
+    "android": [
+      { "name": "GradlePluginKotlinEnabled", "value": "true" },
+      { "name": "android-minSdkVersion", "value": "23" },
+      { "name": "android-compileSdkVersion", "value": "34" },
+      { "name": "android-targetSdkVersion", "value": "34" }
+    ],
+    "ios": [
+      { "name": "UseSwiftLanguageVersion", "value": "5" }
+    ]
+  },
+  "_notes": [
+    "MABS 12 is required (Kotlin/Glance + modern Swift toolchain).",
+    "iOS: the WidgetKit extension target is injected by the plugin's after_prepare hook. Confirm with OutSystems Support that MABS 12 can build & sign a 2nd iOS target before relying on the iOS production build (design doc R1).",
+    "iOS signing additionally requires Apple Developer assets (App Group + extension App ID + regenerated provisioning profiles) — see design doc §3."
+  ]
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget-picker preview only (an image asset, not the running UI — that is Glance/Kotlin). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp"
+    android:height="110dp"
+    android:viewportWidth="180"
+    android:viewportHeight="110">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M0,0h180v110H0z" />
+    <path android:fillColor="#FF0066CC" android:pathData="M16,18h110v14H16z" />
+    <path android:fillColor="#FFCCCCCC" android:pathData="M16,46h148v8H16z" />
+    <path android:fillColor="#FFCCCCCC" android:pathData="M16,62h104v8H16z" />
+</vector>

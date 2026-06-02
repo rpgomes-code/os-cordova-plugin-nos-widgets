@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Distinct filename so it merges with (does not overwrite) the host app's strings.xml. -->
+<resources>
+    <string name="nos_widget_description">NOS account widget</string>
+</resources>

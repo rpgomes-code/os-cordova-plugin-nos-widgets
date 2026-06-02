@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Widget METADATA only (sizes, preview, update policy). This is NOT the UI:
+  the widget UI is rendered in Kotlin/Compose via Jetpack Glance (NosWidget.kt).
+
+  updatePeriodMillis is 0 on purpose — Android clamps anything < 30 min and we
+  drive updates ourselves through WorkManager + writeData(), not the system clock.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:resizeMode="horizontal|vertical"
+    android:widgetCategory="home_screen"
+    android:description="@string/nos_widget_description"
+    android:previewImage="@drawable/nos_widget_preview"/>

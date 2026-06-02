@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        id="os-cordova-plugin-nos-widgets" version="0.1.0">
+
+    <name>NOS Native Widgets</name>
+    <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
+    <license>MIT</license>
+    <keywords>cordova,outsystems,android,ios,widget,glance,widgetkit</keywords>
+
+    <engines>
+        <engine name="cordova" version=">=12.0.0"/>
+        <engine name="cordova-android" version=">=13.0.0"/>
+        <engine name="cordova-ios" version=">=7.0.0"/>
+    </engines>
+
+    <js-module src="www/widget.js" name="nosWidgets">
+        <clobbers target="cordova.plugins.nosWidgets"/>
+    </js-module>
+
+    <!-- ================================ ANDROID ================================ -->
+    <platform name="android">
+
+        <!-- Kotlin + Compose/Glance toolchain. Confirm versions against MABS 12.
+             These must be injected into the app's config.xml: a bare <preference> in a
+             plugin is treated by cordova as a REQUIRED install variable, not a build pref. -->
+        <config-file target="config.xml" parent="/*">
+            <preference name="GradlePluginKotlinEnabled" value="true"/>
+            <preference name="GradlePluginKotlinCodeStyle" value="official"/>
+            <preference name="GradlePluginKotlinVersion" value="1.9.24"/>
+            <preference name="android-minSdkVersion" value="23"/>
+            <preference name="android-compileSdkVersion" value="34"/>
+            <preference name="android-targetSdkVersion" value="34"/>
+        </config-file>
+
+        <!-- Dependencies -->
+        <framework src="androidx.glance:glance-appwidget:1.1.0"/>
+        <framework src="androidx.work:work-runtime-ktx:2.9.1"/>
+        <framework src="androidx.security:security-crypto:1.1.0-alpha06"/>
+        <!-- Applies the Compose compiler to the app module so Glance @Composable code builds -->
+        <framework src="src/android/nos-widgets.gradle" custom="true" type="gradleReference"/>
+
+        <!-- Cordova service registration -->
+        <config-file target="res/xml/config.xml" parent="/*">
+            <feature name="NosWidgets">
+                <param name="android-package" value="com.nos.widgets.NosWidgetPlugin"/>
+            </feature>
+        </config-file>
+
+        <!-- Widget receiver (Glance) -->
+        <config-file target="AndroidManifest.xml" parent="/manifest/application">
+            <receiver android:name="com.nos.widgets.glance.NosWidgetReceiver" android:exported="true">
+                <intent-filter>
+                    <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+                </intent-filter>
+                <meta-data android:name="android.appwidget.provider"
+                           android:resource="@xml/nos_widget_info"/>
+            </receiver>
+        </config-file>
+
+        <!-- Kotlin sources -->
+        <source-file src="src/android/NosWidgetPlugin.kt" target-dir="app/src/main/java/com/nos/widgets"/>
+        <source-file src="src/android/glance/NosWidget.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/glance/NosWidgetReceiver.kt" target-dir="app/src/main/java/com/nos/widgets/glance"/>
+        <source-file src="src/android/work/RefreshWorker.kt" target-dir="app/src/main/java/com/nos/widgets/work"/>
+        <source-file src="src/android/action/RefreshAction.kt" target-dir="app/src/main/java/com/nos/widgets/action"/>
+        <source-file src="src/android/store/WidgetStore.kt" target-dir="app/src/main/java/com/nos/widgets/store"/>
+
+        <!-- Widget metadata (NOT layout — Glance renders the UI in Kotlin) -->
+        <resource-file src="res/android/xml/nos_widget_info.xml" target="res/xml/nos_widget_info.xml"/>
+        <resource-file src="res/android/values/nos_widget_strings.xml" target="res/values/nos_widget_strings.xml"/>
+        <resource-file src="res/android/drawable/nos_widget_preview.xml" target="res/drawable/nos_widget_preview.xml"/>
+    </platform>
+
+    <!-- ================================== iOS ================================== -->
+    <platform name="ios">
+
+        <config-file target="config.xml" parent="/*">
+            <preference name="UseSwiftLanguageVersion" value="5"/>
+        </config-file>
+
+        <!-- Cordova bridge lives in the MAIN app target -->
+        <config-file target="config.xml" parent="/*">
+            <feature name="NosWidgets">
+                <param name="ios-package" value="NosWidgetPlugin"/>
+            </feature>
+        </config-file>
+        <source-file src="src/ios/NosWidgetPlugin.swift"/>
+
+        <!-- Custom URL scheme for widget deep links -->
+        <config-file target="*-Info.plist" parent="CFBundleURLTypes">
+            <array>
+                <dict>
+                    <key>CFBundleURLSchemes</key>
+                    <array>
+                        <string>nosapp</string>
+                    </array>
+                </dict>
+            </array>
+        </config-file>
+
+        <!--
+          The WidgetKit EXTENSION is a separate Xcode target. Cordova <source-file>
+          cannot create a new target, so it is injected by the hook below, which:
+            - creates the app-extension target + build phases
+            - adds src/ios/widget/*.swift to that target
+            - writes App Group entitlements to BOTH targets
+            - sets the extension deployment target to iOS 14
+          NOTE: MABS device signing of this 2nd target is gated (see design §3).
+        -->
+        <hook type="after_prepare" src="hooks/ios-add-widget-extension.js"/>
+    </platform>
+</plugin>

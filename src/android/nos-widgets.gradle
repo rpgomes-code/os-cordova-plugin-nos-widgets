@@ -1,0 +1,18 @@
+// Enables the Jetpack Compose compiler so Glance @Composable code compiles inside the
+// cordova-android app module. Applied to the app module via plugin.xml (<framework
+// custom="true" type="gradleReference">).
+//
+// Versions below assume Kotlin 1.9.x (the cordova-android default we pin in plugin.xml).
+// >>> VERIFY against MABS 12's actual Kotlin/AGP versions (design doc R4). <<<
+//   - Kotlin 1.9.24  -> Compose compiler 1.5.14
+//   - Kotlin 2.0+    -> remove composeOptions and instead apply the
+//                       'org.jetbrains.kotlin.plugin.compose' Gradle plugin.
+
+android {
+    buildFeatures {
+        compose true
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion "1.5.14"
+    }
+}

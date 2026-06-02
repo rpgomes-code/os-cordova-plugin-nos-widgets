@@ -1,0 +1,36 @@
+{
+  "name": "os-cordova-plugin-nos-widgets",
+  "version": "0.1.0",
+  "description": "Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.",
+  "cordova": {
+    "id": "os-cordova-plugin-nos-widgets",
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-android",
+    "cordova-ios",
+    "outsystems",
+    "widget",
+    "glance",
+    "widgetkit"
+  ],
+  "engines": {
+    "cordovaDependencies": {
+      "0.1.0": {
+        "cordova": ">=12.0.0",
+        "cordova-android": ">=13.0.0",
+        "cordova-ios": ">=7.0.0"
+      }
+    }
+  },
+  "author": "NOS",
+  "license": "MIT",
+  "dependencies": {
+    "xcode": "^3.0.1"
+  },
+  "_comment_dependencies": "MABS does NOT run `npm install` for plugin dependencies. `xcode` (used by hooks/ios-add-widget-extension.js) must be VENDORED into the plugin (committed under node_modules/ or inlined) for the hook to resolve it inside the MABS cloud build. This declaration is for local development only."
+}
