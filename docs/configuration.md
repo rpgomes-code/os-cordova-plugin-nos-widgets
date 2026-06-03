@@ -31,7 +31,7 @@ none of them. cordova substitutes them into `config.xml` at install time, where 
 | `NOS_WIDGET_URL_SCHEME` | `nosapp` | deep-link URL scheme registered on the app (pass the same value to `configure({scheme})` so it matches at runtime) |
 | `NOS_WIDGET_APP_GROUP` | derived `group.<app bundle id>` | App Group id shared between app + widget (must be registered on both App IDs in the Apple portal) |
 | `NOS_WIDGET_BUNDLE_SUFFIX` | `widget` | widget extension bundle-id suffix → `<app id>.<suffix>`; must match the extension's App ID / profile |
-| `NOS_WIDGET_IOS_DEPLOYMENT_TARGET` | `14.0` | extension `IPHONEOS_DEPLOYMENT_TARGET` (raise to 16/17 for richer interactive widgets) |
+| `NOS_WIDGET_IOS_DEPLOYMENT_TARGET` | `16.0` | extension `IPHONEOS_DEPLOYMENT_TARGET`. Floor is iOS 16 (lock-screen accessory widgets + `Gauge` require it); do not set below 16 or the build won't compile the lock widget. |
 | `NOS_WIDGET_DISPLAY_NAME` | `NOS` | name shown for the extension (widget gallery context) |
 | `NOS_WIDGET_EXTENSION_NAME` | `NosWidgetExtension` | Xcode extension target / product name |
 | `NOS_WIDGET_TEAM_ID` | (unset) | Apple Developer Team ID. **Setting Team + Profile switches the extension to Manual signing** (MABS/device) |

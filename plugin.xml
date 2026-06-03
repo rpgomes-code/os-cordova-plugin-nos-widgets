@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.3.0">
+        id="os-cordova-plugin-nos-widgets" version="0.4.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
@@ -33,7 +33,7 @@
          API, not a build variable. -->
     <preference name="NOS_WIDGET_URL_SCHEME" default="nosapp"/>
     <preference name="NOS_WIDGET_BUNDLE_SUFFIX" default="widget"/>
-    <preference name="NOS_WIDGET_IOS_DEPLOYMENT_TARGET" default="14.0"/>
+    <preference name="NOS_WIDGET_IOS_DEPLOYMENT_TARGET" default="16.0"/>
     <preference name="NOS_WIDGET_DISPLAY_NAME" default="NOS"/>
     <preference name="NOS_WIDGET_EXTENSION_NAME" default="NosWidgetExtension"/>
     <preference name="NOS_WIDGET_APP_GROUP" default="__unset__"/>

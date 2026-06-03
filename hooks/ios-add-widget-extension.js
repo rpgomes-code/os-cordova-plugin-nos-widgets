@@ -31,7 +31,7 @@ const os = require('os');
 const PLUGIN_ID = 'os-cordova-plugin-nos-widgets';
 // Overridable per-app via config.xml preferences (read in the hook body): see NosWidget* prefs.
 let EXT_NAME = 'NosWidgetExtension';
-let DEPLOYMENT_TARGET = '14.0';
+let DEPLOYMENT_TARGET = '16.0'; // iOS 16 floor: lock-screen accessory widgets + Gauge require it.
 
 module.exports = function (context) {
     const projectRoot = context.opts.projectRoot;
@@ -64,7 +64,7 @@ module.exports = function (context) {
     };
     // Target shape / branding (all optional, defaulting to the historical hardcoded values).
     EXT_NAME = pref('NosWidgetExtensionName', 'NOS_WIDGET_EXTENSION_NAME', 'NosWidgetExtension');
-    DEPLOYMENT_TARGET = pref('NosWidgetIosDeploymentTarget', 'NOS_WIDGET_IOS_DEPLOYMENT_TARGET', '14.0');
+    DEPLOYMENT_TARGET = pref('NosWidgetIosDeploymentTarget', 'NOS_WIDGET_IOS_DEPLOYMENT_TARGET', '16.0');
     const bundleSuffix = pref('NosWidgetBundleSuffix', 'NOS_WIDGET_BUNDLE_SUFFIX', 'widget');
     const displayName = pref('NosWidgetDisplayName', 'NOS_WIDGET_DISPLAY_NAME', 'NOS');
     const urlScheme = pref('NosWidgetUrlScheme', 'NOS_WIDGET_URL_SCHEME', 'nosapp');

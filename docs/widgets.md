@@ -13,6 +13,19 @@ Realistic NOS self-care widgets, each a distinct size on both platforms:
 All three were verified in the Android widget picker with the correct sizes, and Saldo was placed
 live (see screenshots below). The iOS bundle ships all three families.
 
+## Lock screen
+
+- **iOS** — a dedicated **accessory** widget (`NosLockWidget`, iOS 16+) in the *same* WidgetKit
+  extension (no extra target/signing): `.accessoryInline` (saldo above the clock), `.accessoryCircular`
+  (a data-usage gauge), `.accessoryRectangular` (plan + saldo + data). The system renders accessory
+  widgets monochrome/tinted, so NOS colours don't apply there. Validated on the iOS 26 simulator lock
+  screen. Because accessory widgets need iOS 16, the extension's deployment floor is **iOS 16** and the
+  widget is registered **unconditionally** — wrapping it in `if #available` inside the `WidgetBundle`
+  fails to register it with the lock-screen gallery.
+- **Android** — no code: every home-screen widget is lock-screen-eligible **by default** on Android 16
+  QPR2+ (developers only *opt out* via `widgetCategory="not_keyguard"`, which we don't). So Saldo /
+  Fatura / Consumos appear on the lock screen automatically on supporting devices, in full colour.
+
 ## System light / dark
 
 Follows the OS automatically (palette from nos.pt):
