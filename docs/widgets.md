@@ -6,9 +6,9 @@ Realistic NOS self-care widgets, each a distinct size on both platforms:
 
 | Widget | Shape | Android (Glance) | iOS (WidgetKit) | Content |
 |---|---|---|---|---|
-| **Saldo** | small / square | `2×2` | `.systemSmall` | prepaid balance + plan + refresh |
-| **Fatura** | medium / wide | `4×2` | `.systemMedium` | next invoice + due date + **Pagar** action |
-| **Consumos** | large | `4×3` | `.systemLarge` | Dados / Minutos / SMS usage bars |
+| **Saldo** | small / square | `2×1` | `.systemSmall` | prepaid balance + plan + refresh |
+| **Fatura** | medium / wide | `4×1` | `.systemMedium` | next invoice + due date + **Pagar** action |
+| **Consumos** | large | `4×2` | `.systemLarge` | Dados / Minutos / SMS usage bars |
 
 All three were verified in the Android widget picker with the correct sizes, and Saldo was placed
 live (see screenshots below). The iOS bundle ships all three families.
