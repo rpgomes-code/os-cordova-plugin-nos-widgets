@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.1.0">
+        id="os-cordova-plugin-nos-widgets" version="0.2.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
@@ -18,26 +18,28 @@
         <clobbers target="cordova.plugins.nosWidgets"/>
     </js-module>
 
-    <!-- ===================== CONFIGURABLE (OutSystems Extensibility) =====================
-         The iOS after_prepare hook reads these OPTIONAL config.xml preferences (every one has a
-         safe built-in fallback, so a normal build needs none of them). Set them per-app from the
-         OutSystems Extensibility Configuration "preferences" section, for example:
-           <preference name="NosWidgetAppGroup"            value="group.com.acme.app" />
-           <preference name="NosWidgetTeamId"              value="ABCDE12345" />
-           <preference name="NosWidgetProfileSpecifier"    value="ACME Widget Dev" />
-           <preference name="NosWidgetProvisioningProfile" value="profiles/widget.mobileprovision" />
-           <preference name="NosWidgetUrlScheme"           value="acmeapp" />        (deep-link scheme)
-           <preference name="NosWidgetBundleSuffix"        value="widget" />         (ext bundle-id suffix)
-           <preference name="NosWidgetIosDeploymentTarget" value="16.0" />           (default 14.0)
-           <preference name="NosWidgetDisplayName"         value="ACME" />           (widget gallery name)
-           <preference name="NosWidgetExtensionName"       value="AcmeWidgetExtension" />
-         The signing trio (TeamId + ProfileSpecifier, plus optional ProvisioningProfile) switches the
-         widget EXTENSION target to Manual code-signing for MABS/device; omit them for Simulator.
-         (The background-refresh interval is a RUNTIME setting via the JS configure({refreshMinutes}) API,
-         not a build preference.)
-         They are read from config.xml (not declared as plugin <preference> variables) on purpose:
-         cordova treats a plugin <preference> as a MANDATORY install variable, which would force
-         every consuming app to supply all four even when they only want a Simulator build. -->
+    <!-- ===================== CONFIGURABLE (OutSystems plugin variables) =====================
+         Optional install variables, set per-app from the OutSystems Extensibility Configuration's
+         plugin.variables, e.g.:
+           "plugin": { "url": "...#<tag>",
+                       "variables": [ { "name": "NOS_WIDGET_URL_SCHEME", "value": "pt.nos.myapp" } ] }
+         EVERY variable has a non-empty default, so they are all OPTIONAL — an Android-only or a
+         Simulator build needs none of them. The "__unset__" sentinel means "not configured": the iOS
+         hook treats it as empty and falls back (Automatic signing / App Group derived from the bundle
+         id). The values are surfaced into config.xml (see the iOS platform) where the after_prepare
+         hook reads them. (A non-empty `default` is required, otherwise cordova makes the variable
+         MANDATORY at install — hence the sentinel for the "unset" cases.)
+         NOTE: the background-refresh interval is a RUNTIME setting via the JS configure({refreshMinutes})
+         API, not a build variable. -->
+    <preference name="NOS_WIDGET_URL_SCHEME" default="nosapp"/>
+    <preference name="NOS_WIDGET_BUNDLE_SUFFIX" default="widget"/>
+    <preference name="NOS_WIDGET_IOS_DEPLOYMENT_TARGET" default="14.0"/>
+    <preference name="NOS_WIDGET_DISPLAY_NAME" default="NOS"/>
+    <preference name="NOS_WIDGET_EXTENSION_NAME" default="NosWidgetExtension"/>
+    <preference name="NOS_WIDGET_APP_GROUP" default="__unset__"/>
+    <preference name="NOS_WIDGET_TEAM_ID" default="__unset__"/>
+    <preference name="NOS_WIDGET_PROFILE_SPECIFIER" default="__unset__"/>
+    <preference name="NOS_WIDGET_PROVISIONING_PROFILE" default="__unset__"/>
 
     <!-- ================================ ANDROID ================================ -->
     <platform name="android">
@@ -135,10 +137,24 @@
                 <dict>
                     <key>CFBundleURLSchemes</key>
                     <array>
-                        <string>nosapp</string>
+                        <string>$NOS_WIDGET_URL_SCHEME</string>
                     </array>
                 </dict>
             </array>
+        </config-file>
+
+        <!-- Surface the plugin variables into config.xml so the after_prepare hook can read them
+             (cordova substitutes the $VARIABLE values here at plugin install time). -->
+        <config-file target="config.xml" parent="/*">
+            <preference name="NosWidgetUrlScheme" value="$NOS_WIDGET_URL_SCHEME"/>
+            <preference name="NosWidgetBundleSuffix" value="$NOS_WIDGET_BUNDLE_SUFFIX"/>
+            <preference name="NosWidgetIosDeploymentTarget" value="$NOS_WIDGET_IOS_DEPLOYMENT_TARGET"/>
+            <preference name="NosWidgetDisplayName" value="$NOS_WIDGET_DISPLAY_NAME"/>
+            <preference name="NosWidgetExtensionName" value="$NOS_WIDGET_EXTENSION_NAME"/>
+            <preference name="NosWidgetAppGroup" value="$NOS_WIDGET_APP_GROUP"/>
+            <preference name="NosWidgetTeamId" value="$NOS_WIDGET_TEAM_ID"/>
+            <preference name="NosWidgetProfileSpecifier" value="$NOS_WIDGET_PROFILE_SPECIFIER"/>
+            <preference name="NosWidgetProvisioningProfile" value="$NOS_WIDGET_PROVISIONING_PROFILE"/>
         </config-file>
 
         <!--
@@ -148,8 +164,8 @@
             - adds src/ios/widget/*.swift to that target
             - writes App Group entitlements to BOTH targets
             - sets the extension deployment target + signing (see hook header)
-          Signing of this 2nd target under MABS is configurable via the preferences above
-          (NosWidgetTeamId / NosWidgetProfileSpecifier / NosWidgetProvisioningProfile).
+          Signing of this 2nd target under MABS is configurable via the variables above
+          (NOS_WIDGET_TEAM_ID / NOS_WIDGET_PROFILE_SPECIFIER / NOS_WIDGET_PROVISIONING_PROFILE).
         -->
         <hook type="after_prepare" src="hooks/ios-add-widget-extension.js"/>
     </platform>

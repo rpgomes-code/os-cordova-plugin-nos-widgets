@@ -1,44 +1,47 @@
 # Configuration reference
 
 Everything an OutSystems app can tune without forking the plugin. Two mechanisms:
-**build-time preferences** (set in the Extensibility Configuration) and **runtime options**
-(passed to the JS `configure()` Client Action).
+**build-time variables** (set as plugin variables in the Extensibility Configuration) and **runtime
+options** (passed to the JS `configure()` Client Action).
 
-## Build-time preferences (Extensibility Configuration → `preferences`)
+## Build-time configuration (Extensibility Configuration → `plugin.variables`)
 
-Set these in the OutSystems app's Extensibility Configuration JSON. All are **optional** — each has
-a safe built-in fallback, so an unconfigured Simulator/local build works with none of them. The iOS
-`after_prepare` hook reads them from `config.xml`. (They are intentionally NOT declared as plugin
-`<preference>` variables, because cordova would then make them *mandatory* at install time.)
+Set these as **plugin variables** in the OutSystems app's Extensibility Configuration. All are
+**optional** — each has a non-empty default, so an unconfigured Android-only / Simulator build needs
+none of them. cordova substitutes them into `config.xml` at install time, where the iOS
+`after_prepare` hook reads them.
 
 ```json
-{ "preferences": {
-    "NosWidgetAppGroup":            "group.com.acme.app",
-    "NosWidgetUrlScheme":           "acmeapp",
-    "NosWidgetBundleSuffix":        "widget",
-    "NosWidgetIosDeploymentTarget": "16.0",
-    "NosWidgetDisplayName":         "ACME",
-    "NosWidgetExtensionName":       "AcmeWidgetExtension",
-    "NosWidgetTeamId":              "ABCDE12345",
-    "NosWidgetProfileSpecifier":    "ACME Widget Dev",
-    "NosWidgetProvisioningProfile": "profiles/acme-widget.mobileprovision"
-} }
+{
+  "plugin": {
+    "url": "https://github.com/rpgomes-code/os-cordova-plugin-nos-widgets#0.2.0",
+    "variables": [
+      { "name": "NOS_WIDGET_URL_SCHEME",           "value": "pt.nos.myapp" },
+      { "name": "NOS_WIDGET_APP_GROUP",            "value": "group.pt.nos.myapp" },
+      { "name": "NOS_WIDGET_TEAM_ID",              "value": "ABCDE12345" },
+      { "name": "NOS_WIDGET_PROFILE_SPECIFIER",    "value": "MyApp Widget Dev" },
+      { "name": "NOS_WIDGET_PROVISIONING_PROFILE", "value": "profiles/widget.mobileprovision" }
+    ]
+  }
+}
 ```
 
-| Preference | Default | Controls |
+| Variable | Default | Controls |
 |---|---|---|
-| `NosWidgetAppGroup` | `group.<app bundle id>` | App Group id shared between app + widget (must be registered on both App IDs in the Apple portal) |
-| `NosWidgetUrlScheme` | `nosapp` | deep-link URL scheme registered on the app (also pass to `configure({scheme})` so it matches at runtime) |
-| `NosWidgetBundleSuffix` | `widget` | widget extension bundle-id suffix → `<app id>.<suffix>`; must match the extension's App ID / profile |
-| `NosWidgetIosDeploymentTarget` | `14.0` | extension `IPHONEOS_DEPLOYMENT_TARGET` (raise to 16/17 for richer interactive widgets) |
-| `NosWidgetDisplayName` | `NOS` | name shown for the extension (widget gallery context) |
-| `NosWidgetExtensionName` | `NosWidgetExtension` | Xcode extension target / product name |
-| `NosWidgetTeamId` | — | Apple Developer Team ID. **Setting Team + Profile switches the extension to Manual signing** (MABS/device) |
-| `NosWidgetProfileSpecifier` | — | `PROVISIONING_PROFILE_SPECIFIER` (name or UUID) for the extension target |
-| `NosWidgetProvisioningProfile` | — | path to the extension's `.mobileprovision`; the hook copies it into the build agent's `~/Library/MobileDevice/Provisioning Profiles/` ("Rung 1") |
+| `NOS_WIDGET_URL_SCHEME` | `nosapp` | deep-link URL scheme registered on the app (pass the same value to `configure({scheme})` so it matches at runtime) |
+| `NOS_WIDGET_APP_GROUP` | derived `group.<app bundle id>` | App Group id shared between app + widget (must be registered on both App IDs in the Apple portal) |
+| `NOS_WIDGET_BUNDLE_SUFFIX` | `widget` | widget extension bundle-id suffix → `<app id>.<suffix>`; must match the extension's App ID / profile |
+| `NOS_WIDGET_IOS_DEPLOYMENT_TARGET` | `14.0` | extension `IPHONEOS_DEPLOYMENT_TARGET` (raise to 16/17 for richer interactive widgets) |
+| `NOS_WIDGET_DISPLAY_NAME` | `NOS` | name shown for the extension (widget gallery context) |
+| `NOS_WIDGET_EXTENSION_NAME` | `NosWidgetExtension` | Xcode extension target / product name |
+| `NOS_WIDGET_TEAM_ID` | (unset) | Apple Developer Team ID. **Setting Team + Profile switches the extension to Manual signing** (MABS/device) |
+| `NOS_WIDGET_PROFILE_SPECIFIER` | (unset) | `PROVISIONING_PROFILE_SPECIFIER` (name or UUID) for the extension target |
+| `NOS_WIDGET_PROVISIONING_PROFILE` | (unset) | path to the extension's `.mobileprovision`; the hook copies it into the build agent's `~/Library/MobileDevice/Provisioning Profiles/` ("Rung 1") |
 
-When `NosWidgetTeamId` + `NosWidgetProfileSpecifier` are **unset**, the extension stays on **Automatic**
-signing (Simulator / local), so the hook never breaks a normal build. See
+The "unset" variables use a `__unset__` sentinel default internally (cordova requires a non-empty
+default, otherwise the variable becomes mandatory at install); the hook treats `__unset__` as empty
+and falls back. So when `NOS_WIDGET_TEAM_ID` + `NOS_WIDGET_PROFILE_SPECIFIER` are not provided, the
+extension stays on **Automatic** signing (Simulator / local) and a normal build is never broken. See
 [`research/2026-06-02-ecosystem-and-widget-research.md`](research/2026-06-02-ecosystem-and-widget-research.md) §1
 for the full MABS signing story.
 

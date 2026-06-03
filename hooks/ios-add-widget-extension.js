@@ -52,10 +52,15 @@ module.exports = function (context) {
     // Optional, OutSystems-configurable preferences (read from config.xml, or an env var for local
     // testing). All have safe fallbacks, so an unconfigured Simulator/local build is unchanged.
     const cfgXml = readConfigXml(iosDir, appName, projectRoot);
+    // '__unset__' is the sentinel default of the optional plugin variables (a cordova install
+    // <preference> must have a non-empty default, so "not configured" is encoded as this sentinel).
     const pref = function (cfgName, envName, fallback) {
-        if (envName && process.env[envName]) { return process.env[envName]; }
-        const m = cfgXml.match(new RegExp('<preference\\s+name="' + cfgName + '"\\s+value="([^"]*)"'));
-        return (m && m[1]) ? m[1] : fallback;
+        let v = (envName && process.env[envName]) ? process.env[envName] : null;
+        if (v === null) {
+            const m = cfgXml.match(new RegExp('<preference\\s+name="' + cfgName + '"\\s+value="([^"]*)"'));
+            v = m ? m[1] : null;
+        }
+        return (v === null || v === '' || v === '__unset__') ? fallback : v;
     };
     // Target shape / branding (all optional, defaulting to the historical hardcoded values).
     EXT_NAME = pref('NosWidgetExtensionName', 'NOS_WIDGET_EXTENSION_NAME', 'NosWidgetExtension');
