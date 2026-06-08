@@ -22,9 +22,23 @@ live (see screenshots below). The iOS bundle ships all three families.
   screen. Because accessory widgets need iOS 16, the extension's deployment floor is **iOS 16** and the
   widget is registered **unconditionally** — wrapping it in `if #available` inside the `WidgetBundle`
   fails to register it with the lock-screen gallery.
-- **Android** — no code: every home-screen widget is lock-screen-eligible **by default** on Android 16
-  QPR2+ (developers only *opt out* via `widgetCategory="not_keyguard"`, which we don't). So Saldo /
-  Fatura / Consumos appear on the lock screen automatically on supporting devices, in full colour.
+- **Android** — no code. Per Google's [lock-screen widgets FAQ](https://android-developers.googleblog.com/2025/03/widgets-on-lock-screen-faq.html),
+  *"all widgets are compatible with the lock screen widget experience"* — every home-screen widget
+  (ours included; `android:widgetCategory="home_screen"`) is lock-screen-eligible **by default** on
+  Android 16 QPR2+. The `keyguard` category is **not** required (that was the old Android-4.2 model);
+  developers only *opt out* via the `not_keyguard` category in a `res/xml-36/` provider info — which we
+  don't. So Saldo / Fatura / Consumos appear in the lock-screen widget picker (the "glanceable hub")
+  automatically on supporting devices, in full colour. Tapping a widget on the lock screen requires the
+  user to **authenticate** before the app opens, because we deliberately do *not* set
+  `android:showWhenLocked` on the launched activity — the right default for self-care data.
+  NOTE: a generic Android emulator (`sdk_gphone`, even API 37/Android 17) has the hub feature-flagged on
+  (`glanceable_hub_v2`, `communal_*`) and even exposes the **Settings → Display → "Widgets on lock screen"
+  (Beta)** master toggle — but enabling it and swiping left on the lock screen still does **not** open the
+  hub (verified across several swipe variants, both via `adb` and by hand; `EditWidgetsActivity` is also
+  not exported). The emulator image stubs the feature at the flag/Settings level without rendering the
+  live hub surface. Validate the visual on a **physical Pixel** (6-series+/Tablet/Fold) on Android 16
+  QPR2+: turn on that toggle, swipe left on the lock screen, tap **+ / Add widgets**, and pick
+  Saldo / Fatura / Consumos.
 
 ## System light / dark
 
