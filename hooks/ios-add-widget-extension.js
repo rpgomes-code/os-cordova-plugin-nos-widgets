@@ -203,11 +203,27 @@ function maybeInstallProvisioningProfile(projectRoot, profilePath) {
         path.resolve(projectRoot, profilePath),
         path.join(projectRoot, 'plugins', PLUGIN_ID, profilePath)
     ].filter(Boolean);
-    const src = candidates.find(function (p) {
+    let src = candidates.find(function (p) {
         try { return fs.statSync(p).isFile(); } catch (e) { return false; }
     });
     if (!src) {
-        console.warn('[nos-widgets] provisioning profile "' + profilePath + '" not found (looked in projectRoot + plugin dir); skipping. Extension may fail to sign on device.');
+        // MABS may drop an OutSystems module Resource somewhere other than the literal path (it bundles
+        // a Resource under www/<module>/... at its Runtime Path). Scan the generated project tree for the
+        // filename so the profile is found wherever it lands — no need to know the exact MABS path up front.
+        const base = path.basename(profilePath);
+        const matches = scanForFile(projectRoot, base, 9);
+        if (matches.length) {
+            src = matches[0];
+            console.log('[nos-widgets] provisioning profile "' + base + '" located via project scan -> ' + src +
+                (matches.length > 1 ? '  (' + matches.length + ' matches: ' + matches.join(', ') + ')' : ''));
+        }
+    }
+    if (!src) {
+        console.warn('[nos-widgets] provisioning profile "' + profilePath + '" NOT found. Looked at: [' +
+            candidates.join(', ') + '] and scanned the project tree for "' + path.basename(profilePath) +
+            '". Skipping — the widget extension may fail to sign on device. Confirm the OutSystems ' +
+            'Resource is included in the build, or set NOS_WIDGET_PROVISIONING_PROFILE to its path ' +
+            'relative to the project root.');
         return;
     }
     let destName = path.basename(src);
@@ -225,6 +241,27 @@ function maybeInstallProvisioningProfile(projectRoot, profilePath) {
     } catch (e) {
         console.warn('[nos-widgets] could not install provisioning profile: ' + e.message);
     }
+}
+
+// Recursively search `rootDir` (bounded depth; skips heavy/irrelevant dirs) for files named
+// `fileName`. Lets the widget profile be shipped as an OutSystems module Resource and found wherever
+// MABS places it in the generated Cordova project (typically under www/<module>/).
+function scanForFile(rootDir, fileName, maxDepth) {
+    const SKIP = new Set(['node_modules', '.git', 'Pods', 'build', 'DerivedData', 'CordovaLib', '.cordova']);
+    const out = [];
+    (function walk(dir, depth) {
+        if (depth > maxDepth) { return; }
+        let entries;
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+        for (const ent of entries) {
+            if (ent.isDirectory()) {
+                if (!SKIP.has(ent.name)) { walk(path.join(dir, ent.name), depth + 1); }
+            } else if (ent.name === fileName) {
+                out.push(path.join(dir, ent.name));
+            }
+        }
+    })(rootDir, 0);
+    return out;
 }
 
 function getBundleIdFromConfig(projectRoot) {

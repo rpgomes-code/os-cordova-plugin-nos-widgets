@@ -75,13 +75,13 @@ doesn't carry that capability. Fixing the portal (below) clears it.
 ```json
 {
   "plugin": {
-    "url": "https://github.com/rpgomes-code/os-cordova-plugin-nos-widgets#0.3.0",
+    "url": "https://github.com/rpgomes-code/os-cordova-plugin-nos-widgets#0.5.0",
     "variables": [
       { "name": "NOS_WIDGET_URL_SCHEME",           "value": "pt.nos.osatmospheretest" },
       { "name": "NOS_WIDGET_APP_GROUP",            "value": "group.pt.nos.osatmospheretest" },
       { "name": "NOS_WIDGET_TEAM_ID",              "value": "<YOUR 10-CHAR TEAM ID>" },
       { "name": "NOS_WIDGET_PROFILE_SPECIFIER",    "value": "NOS Test Widget" },
-      { "name": "NOS_WIDGET_PROVISIONING_PROFILE", "value": "<see Step 6>" }
+      { "name": "NOS_WIDGET_PROVISIONING_PROFILE", "value": "widget.mobileprovision" }
     ]
   }
 }
@@ -90,21 +90,25 @@ doesn't carry that capability. Fixing the portal (below) clears it.
 - `NOS_WIDGET_PROFILE_SPECIFIER` — the widget profile **name** (`NOS Test Widget`) or its UUID.
 - Setting Team + Specifier flips the widget target to **Manual** signing against that profile.
 
-## Step 6 — Get the widget profile to MABS (one decision)
-MABS only ingests the **single** profile from Step 5a (the main app's). The widget's profile has to
-reach the build agent another way. Pick one:
+## Step 6 — Get the widget profile onto the MABS build agent
+MABS only ingests the **single** profile from Step 5a (the main app's). The widget's profile reaches
+the build agent as an **OutSystems module Resource** (recommended — keeps it out of the public repo):
 
-- **Option A (simplest for testing):** keep the widget `.mobileprovision` out of the *public* repo —
-  either flip this plugin repo to **private** and commit it at `res/ios/profiles/widget.mobileprovision`,
-  or ship it in the OutSystems Extensibility **resource ZIP**. Then set
-  `NOS_WIDGET_PROVISIONING_PROFILE` to that path; the hook copies it into the build agent's
-  `~/Library/MobileDevice/Provisioning Profiles/` before signing.
-- **Option B (cleanest, ask OutSystems):** request that MABS pass a **`provisioningProfile` map**
-  (bundle-id → profile) in `build.json` — cordova-ios 7.x already supports it at the export stage, so
-  no per-profile shipping is needed. (See `docs/research/2026-06-02-ecosystem-and-widget-research.md` §1.)
+1. **Service Studio** → add `widget.mobileprovision` as a **Resource** of the app module (Deploy Action
+   `Do Nothing` is fine; it's not a server file). Its **Runtime Path** (e.g.
+   `/NOSWidgetsPlugin/widget.mobileprovision`) is where MABS bundles it, under the app's `www/`.
+2. Set `NOS_WIDGET_PROVISIONING_PROFILE` to just the **filename** — `widget.mobileprovision`. As of
+   plugin **0.5.0** the iOS hook scans the generated Cordova project tree for that filename and copies
+   whatever it finds into the agent's `~/Library/MobileDevice/Provisioning Profiles/`, so the exact MABS
+   path doesn't matter. (You may also give an explicit project-root-relative path, e.g.
+   `www/NOSWidgetsPlugin/widget.mobileprovision`.)
 
-> Tell me which option and I'll wire the hook / draft the OutSystems Support note accordingly. (If the
-> resource-ZIP path is used, the hook needs one extra lookup location — a 1-line change.)
+> A `.mobileprovision` is not a private key (the secret is the `.p12`), but shipping it as a Resource
+> still keeps signing assets out of the public repo.
+
+**Alternative (cleaner long-term — OutSystems Support ask):** request that MABS emit a 2-entry
+`provisioningProfile` map (bundle id → profile) in `build.json`; cordova-ios already supports it at the
+export stage, so nothing needs shipping. (See `docs/research/2026-06-02-ecosystem-and-widget-research.md` §1.)
 
 ## Verify
 Rebuild the iOS app in MABS and check the log:
