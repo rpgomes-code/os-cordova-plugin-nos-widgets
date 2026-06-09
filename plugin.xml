@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.11.0">
+        id="os-cordova-plugin-nos-widgets" version="0.12.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>

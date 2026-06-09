@@ -96,6 +96,9 @@ module.exports = function (context) {
             // 0.11.0: (re)add the inside-xcodebuild run-script markers (idempotent — guarded by name).
             addInstrumentationBuildPhases(proj, existingUuid, EXT_NAME);
             fs.writeFileSync(pbxPath, proj.writeSync());
+            // 0.12.0: invalidate cordova-ios's stale project-file cache so the signing step (writeCodeSignStyle)
+            // re-reads THIS pbxproj instead of overwriting it with the pre-injection parse (CB-11258 strip).
+            purgeCordovaProjectFileCache(projectRoot, iosDir);
             addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, existingUuid);
         }
         if (podfileTargetOn) { maybeWritePodfileTarget(iosDir, EXT_NAME); }
@@ -181,6 +184,11 @@ module.exports = function (context) {
 
     fs.writeFileSync(pbxPath, proj.writeSync());
 
+    // 6d. 0.12.0 ROOT-CAUSE FIX (CB-11258): invalidate cordova-ios's stale project-file cache so the build
+    //     phase's writeCodeSignStyle() re-reads THIS injected pbxproj from disk instead of serializing the
+    //     pre-injection cached parse over it (which silently strips the extension on MABS — proven Build #8).
+    purgeCordovaProjectFileCache(projectRoot, iosDir);
+
     // 7. Register the extension in the app's SHARED SCHEME's BuildActionEntries. CRITICAL for MABS:
     //    cordova-ios 7's `xcodebuild -workspace -scheme archive` only builds targets that are in the
     //    scheme (or a resolved dependency of one). The embed Copy-Files phase + target dependency alone
@@ -210,6 +218,45 @@ function extensionTargetExists(proj) {
         return t && typeof t === 'object' &&
             (t.name === EXT_NAME || t.name === '"' + EXT_NAME + '"');
     });
+}
+
+// 0.12.0 ROOT-CAUSE FIX (cordova bug CB-11258 / cordova-cli#557). cordova-ios's lib/projectFile.js keeps a
+// MODULE-LEVEL cache of the parsed project.pbxproj keyed by the platforms/ios dir. In MABS's single
+// `cordova build` process, `prepare` parses + caches the CLEAN (pre-injection) pbxproj BEFORE this hook runs;
+// then the build phase's writeCodeSignStyle() (Manual signing, triggered by the build.json provisioning
+// profile) calls project.write() = fs.writeFileSync(pbxproj, xcodeproj.writeSync()), which serializes that
+// STALE cached parse back over our injected on-disk file — silently STRIPPING the extension target/embed/
+// dependency (PROVEN on MABS Build #8: project.pbxproj 180359 -> 167162 bytes ~189ms after before_compile,
+// ext occurrences 38 -> 0; the scheme is left with a dangling BuildActionEntry; archive ships no .appex).
+// There is NO cordova hook between writeCodeSignStyle and `xcodebuild archive`, so we cannot re-inject after
+// the strip. Instead we INVALIDATE cordova's cache right after writing the pbxproj (cordova's own public API),
+// so writeCodeSignStyle gets a cache MISS, re-reads OUR injected file from disk, and its write becomes a
+// faithful round-trip that PRESERVES the extension. Node caches modules by resolved path, so we purge EVERY
+// resolvable cordova-ios instance (to be sure we hit the one build.js uses). Never throws; no-op if
+// cordova-ios isn't resolvable (e.g. a local Simulator build with CODE_SIGNING_ALLOWED=NO, where the signing
+// step never runs and there is nothing to strip).
+function purgeCordovaProjectFileCache(projectRoot, iosDir) {
+    const candidates = [
+        path.join(projectRoot, 'node_modules', 'cordova-ios', 'lib', 'projectFile.js'),
+        path.join(iosDir, 'cordova', 'node_modules', 'cordova-ios', 'lib', 'projectFile.js'),
+        'cordova-ios/lib/projectFile'
+    ];
+    let purged = 0;
+    for (const c of candidates) {
+        try {
+            const pf = require(c);
+            if (pf && typeof pf.purgeProjectFileCache === 'function') {
+                pf.purgeProjectFileCache(iosDir);
+                purged++;
+                console.log('[nos-widgets] purged cordova-ios projectFile cache via ' + require.resolve(c) +
+                    ' (key=' + iosDir + ') so writeCodeSignStyle re-reads the injected pbxproj (CB-11258 fix).');
+            }
+        } catch (e) { /* not resolvable here; try next candidate */ }
+    }
+    if (purged === 0) {
+        console.warn('[nos-widgets] could NOT purge cordova-ios projectFile cache (module not resolvable). ' +
+            'On a MABS signing build the extension may be stripped by writeCodeSignStyle (CB-11258).');
+    }
 }
 
 function loadXcode(projectRoot) {
