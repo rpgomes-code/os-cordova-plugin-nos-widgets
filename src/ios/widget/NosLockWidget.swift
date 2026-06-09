@@ -27,6 +27,19 @@ struct NosLockView: View {
     private var dataPct: Double { data.dataTotal > 0 ? min(data.dataUsed / data.dataTotal, 1.0) : 0 }
 
     var body: some View {
+        // iOS 17+ requires EVERY widget to adopt the containerBackground API, otherwise the lock screen /
+        // StandBy render "Please adopt containerBackground API" instead of the widget. Accessory widgets are
+        // drawn by the system with a vibrant/monochrome treatment, so a CLEAR container background is the
+        // correct choice here (the home-screen widgets use Color.nosBg via Components.swift). Guarded for
+        // iOS 16, where the API does not exist and is not required.
+        if #available(iOS 17.0, *) {
+            content.containerBackground(for: .widget) { Color.clear }
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         switch family {
 
         // One line above the clock.
