@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.9.0">
+        id="os-cordova-plugin-nos-widgets" version="0.10.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
@@ -41,6 +41,10 @@
     <preference name="NOS_WIDGET_PROFILE_SPECIFIER" default="__unset__"/>
     <preference name="NOS_WIDGET_PROVISIONING_PROFILE" default="__unset__"/>
     <preference name="NOS_WIDGET_MOBILEPROVISION_B64" default="__unset__"/>
+    <!-- 0.10.0: when "true", after_prepare appends an (empty) Podfile target block for the
+         widget extension so the next `pod install` integrates it into the CocoaPods workspace
+         graph. Default OFF — only flip for the SECOND MABS build if build #1 still drops the appex. -->
+    <preference name="NOS_WIDGET_PODFILE_TARGET" default="__unset__"/>
 
     <!-- ================================ ANDROID ================================ -->
     <platform name="android">
@@ -157,6 +161,7 @@
             <preference name="NosWidgetProfileSpecifier" value="$NOS_WIDGET_PROFILE_SPECIFIER"/>
             <preference name="NosWidgetProvisioningProfile" value="$NOS_WIDGET_PROVISIONING_PROFILE"/>
             <preference name="NosWidgetMobileprovisionB64" value="$NOS_WIDGET_MOBILEPROVISION_B64"/>
+            <preference name="NosWidgetPodfileTarget" value="$NOS_WIDGET_PODFILE_TARGET"/>
         </config-file>
 
         <!--

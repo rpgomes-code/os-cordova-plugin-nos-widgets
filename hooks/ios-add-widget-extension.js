@@ -74,17 +74,32 @@ module.exports = function (context) {
         profilePath: pref('NosWidgetProvisioningProfile', 'NOS_WIDGET_PROVISIONING_PROFILE', ''),
         profileB64: pref('NosWidgetMobileprovisionB64', 'NOS_WIDGET_MOBILEPROVISION_B64', '')
     };
+    // 0.10.0 (default OFF): emit a Podfile target block so CocoaPods integrates the ext target.
+    const podfileTargetOn = /^(1|true|yes|on)$/i.test(
+        pref('NosWidgetPodfileTarget', 'NOS_WIDGET_PODFILE_TARGET', ''));
+    // Which cordova hook phase we are in (cordova sets this on context.hook).
+    const hookType = (context && context.hook) || 'unknown';
+    console.log('[nos-widgets] hook phase=' + hookType + ' ext=' + EXT_NAME +
+        ' podfileTarget=' + (podfileTargetOn ? 'ON' : 'off'));
 
     if (extensionTargetExists(proj)) {
         // Already injected — either an earlier prepare in this build, or this hook running again at
-        // before_compile (it is registered for BOTH after_prepare and before_compile). Some MABS /
-        // cordova-ios pipelines REWRITE the .pbxproj or regenerate the shared scheme AFTER after_prepare,
-        // which drops the app->extension dependency and leaves the scheme's BuildActionEntry dangling, so
-        // xcodebuild silently skips the extension and the app ships with no widget. Re-assert the shared-
-        // scheme registration here against the extension's CURRENT uuid so it survives such a rewrite.
+        // before_compile (registered for BOTH). Some MABS / cordova-ios pipelines REWRITE the .pbxproj
+        // or regenerate the shared scheme AFTER after_prepare, dropping the app->extension dependency /
+        // embed phase and leaving the scheme entry dangling, so xcodebuild silently skips the extension.
+        // Re-assert ALL the pbxproj edges (embed phase + target dependency) AND the scheme entry against
+        // the CURRENT uuid so the wiring survives such a rewrite, then dump full diagnostics.
         const existingUuid = findExtensionTargetUuid(proj, EXT_NAME);
-        console.log('[nos-widgets] extension target already present (uuid=' + existingUuid + '); re-asserting shared-scheme registration.');
-        if (existingUuid) { addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, existingUuid); }
+        console.log('[nos-widgets] extension target already present (uuid=' + existingUuid + '); re-asserting wiring.');
+        if (existingUuid) {
+            reassertEmbedAndDependency(proj, existingUuid, EXT_NAME);
+            fs.writeFileSync(pbxPath, proj.writeSync());
+            addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, existingUuid);
+        }
+        if (podfileTargetOn) { maybeWritePodfileTarget(iosDir, EXT_NAME); }
+        // Re-parse from disk so diagnostics reflect exactly what xcodebuild will read.
+        const projAfter = xcode.project(pbxPath); projAfter.parseSync();
+        runDiagnostics(projAfter, iosDir, projName, appName, EXT_NAME, existingUuid, hookType);
         return;
     }
 
@@ -155,6 +170,10 @@ module.exports = function (context) {
     // 6. Build settings for the extension configurations (incl. signing).
     applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntName, signing);
 
+    // 6b. Strip CodeSignOnCopy from the embed Copy-Files phase if a round-trip ever added it (D2),
+    //     and make sure exactly one app->ext dependency exists (D3). Cheap insurance.
+    reassertEmbedAndDependency(proj, target.uuid, EXT_NAME);
+
     fs.writeFileSync(pbxPath, proj.writeSync());
 
     // 7. Register the extension in the app's SHARED SCHEME's BuildActionEntries. CRITICAL for MABS:
@@ -162,10 +181,17 @@ module.exports = function (context) {
     //    scheme (or a resolved dependency of one). The embed Copy-Files phase + target dependency alone
     //    do NOT pull the extension into the build graph on cordova-ios 7 (verified: the archive's target
     //    dependency graph omits it), so the .appex is never built and the app ships with NO widget.
-    //    (cordova-ios 8 DOES build it via the embed phase, which is why it looked fine in a cordova-ios-8
-    //    repro.) node-xcode has no scheme API, so the .xcscheme XML is patched directly.
+    //    node-xcode has no scheme API, so the .xcscheme XML is patched directly.
     addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, target.uuid);
+
+    // 8. (0.10.0, gated OFF) make CocoaPods aware of the extra target in the ~46-target workspace.
+    if (podfileTargetOn) { maybeWritePodfileTarget(iosDir, EXT_NAME); }
+
     console.log('[nos-widgets] WidgetKit extension injected (appGroup=' + appGroup + ', deploymentTarget=' + DEPLOYMENT_TARGET + ').');
+
+    // 9. MAXIMUM DIAGNOSTICS: re-parse from disk and dump the true graph xcodebuild will read.
+    const projAfter = xcode.project(pbxPath); projAfter.parseSync();
+    runDiagnostics(projAfter, iosDir, projName, appName, EXT_NAME, target.uuid, hookType);
 };
 
 // ---------------------------------------------------------------------------- helpers
@@ -306,55 +332,113 @@ function scanForFile(rootDir, fileName, maxDepth) {
     return out;
 }
 
-// Register the injected extension target in the app's SHARED SCHEME so `xcodebuild -scheme archive`
-// builds it. On cordova-ios 7 the embed Copy-Files phase does NOT pull the extension into the build
-// graph (it does on cordova-ios 8), so the scheme entry is REQUIRED on MABS. node-xcode has no scheme
-// API, so the .xcscheme XML is edited directly. Idempotent (guards on the extension target uuid). The
-// scheme can live under the .xcworkspace OR the .xcodeproj depending on cordova-ios version.
+// Register the injected extension target in EVERY shared/user scheme so `xcodebuild -scheme archive`
+// builds it. cordova-ios 7's archive only builds targets in the scheme (or a resolved dependency), and
+// the embed phase alone does NOT pull the appex into the graph (verified). node-xcode has no scheme API,
+// so the .xcscheme XML is patched directly.
+//
+// D1 (the leading hypothesis): a BuildActionEntry is SILENTLY dropped if its ReferencedContainer does
+// not resolve to the .xcodeproj that holds the target. Rather than (re)compute the container from a
+// path — whose resolution base is ambiguous and silently wrong if off — we reuse the EXACT container
+// string from the scheme's existing APP BuildActionEntry: the app and the extension live in the SAME
+// .xcodeproj, the app entry already resolves and the app builds, so that container is provably correct.
 function addExtensionToSharedScheme(iosDir, projName, appName, extName, extTargetUuid) {
-    const candidates = [
-        path.join(iosDir, appName + '.xcworkspace', 'xcshareddata', 'xcschemes', appName + '.xcscheme'),
-        path.join(iosDir, projName, 'xcshareddata', 'xcschemes', appName + '.xcscheme')
-    ];
-    const schemeFile = candidates.find(function (p) {
-        try { return fs.statSync(p).isFile(); } catch (e) { return false; }
-    });
-    if (!schemeFile) {
-        console.warn('[nos-widgets] shared scheme not found (looked: ' + candidates.join(', ') +
-            '); the extension may not be built by -scheme archive.');
+    const schemeFiles = findAllSchemes(iosDir, appName);
+    if (!schemeFiles.length) {
+        console.warn('[nos-widgets] NO .xcscheme found under ' + iosDir + '; -scheme archive cannot build the extension.');
         return;
     }
-    let s = fs.readFileSync(schemeFile, 'utf8');
-    if (s.indexOf('BlueprintIdentifier = "' + extTargetUuid + '"') !== -1) {
-        console.log('[nos-widgets] extension already registered in shared scheme; skipping.');
-        return;
-    }
-    // Make sure implicit-dependency resolution is on too (belt-and-suspenders).
-    s = s.replace(/buildImplicitDependencies\s*=\s*"NO"/g, 'buildImplicitDependencies = "YES"');
-    const entry =
-        '      <BuildActionEntry\n' +
-        '         buildForTesting = "NO"\n' +
-        '         buildForRunning = "YES"\n' +
-        '         buildForProfiling = "YES"\n' +
-        '         buildForArchiving = "YES"\n' +
-        '         buildForAnalyzing = "YES">\n' +
-        '         <BuildableReference\n' +
-        '            BuildableIdentifier = "primary"\n' +
-        '            BlueprintIdentifier = "' + extTargetUuid + '"\n' +
-        '            BuildableName = "' + extName + '.appex"\n' +
-        '            BlueprintName = "' + extName + '"\n' +
-        '            ReferencedContainer = "container:' + projName + '">\n' +
-        '         </BuildableReference>\n' +
-        '      </BuildActionEntry>\n';
-    if (s.indexOf('<BuildActionEntries>') !== -1) {
+    schemeFiles.forEach(function (schemeFile) {
+        let s;
+        try { s = fs.readFileSync(schemeFile, 'utf8'); } catch (e) { return; }
+        if (s.indexOf('<BuildActionEntries>') === -1) {
+            console.warn('[nos-widgets][scheme] no <BuildActionEntries> in ' + schemeFile + '; skipping.');
+            return;
+        }
+        // D1: reuse the container string from the EXISTING app BuildActionEntry in THIS scheme (same
+        // .xcodeproj as the ext, already resolves). Fall back to "container:<projName>" only if absent.
+        const appContainer = extractAppReferencedContainer(s, extName);
+        const container = appContainer || ('container:' + projName);
+        if (!appContainer) {
+            console.warn('[nos-widgets][scheme] no existing app BuildActionEntry ReferencedContainer in ' +
+                schemeFile + '; falling back to "' + container + '".');
+        }
+
+        // D5: force implicit-dependency resolution ON even when the attribute is absent.
+        s = s.replace(/buildImplicitDependencies\s*=\s*"NO"/g, 'buildImplicitDependencies = "YES"');
+        if (s.indexOf('buildImplicitDependencies') === -1) {
+            s = s.replace(/<BuildAction\b/, '<BuildAction\n      buildImplicitDependencies = "YES"');
+        }
+
+        // D7: strip ANY existing entry for <ext>.appex (any uuid/container) so we never leave a stale,
+        // unresolvable entry beside the good one.
+        s = stripBuildActionEntryByAppex(s, extName + '.appex');
+
+        const entry =
+            '      <BuildActionEntry\n' +
+            '         buildForTesting = "NO"\n' +
+            '         buildForRunning = "YES"\n' +
+            '         buildForProfiling = "YES"\n' +
+            '         buildForArchiving = "YES"\n' +
+            '         buildForAnalyzing = "YES">\n' +
+            '         <BuildableReference\n' +
+            '            BuildableIdentifier = "primary"\n' +
+            '            BlueprintIdentifier = "' + extTargetUuid + '"\n' +
+            '            BuildableName = "' + extName + '.appex"\n' +
+            '            BlueprintName = "' + extName + '"\n' +
+            '            ReferencedContainer = "' + container + '">\n' +
+            '         </BuildableReference>\n' +
+            '      </BuildActionEntry>\n';
         // Insert the extension BEFORE the app entry so it is built first.
         s = s.replace('<BuildActionEntries>', '<BuildActionEntries>\n' + entry);
-    } else {
-        console.warn('[nos-widgets] <BuildActionEntries> not found in scheme; cannot register extension.');
-        return;
+        fs.writeFileSync(schemeFile, s);
+        console.log('[nos-widgets][scheme] registered ' + extName + ' (uuid=' + extTargetUuid +
+            ', container="' + container + '") in ' + schemeFile);
+    });
+}
+
+// Pull the ReferencedContainer string out of the scheme's existing APP BuildActionEntry (i.e. the one
+// whose BuildableName is NOT the <ext>.appex). The app and ext share the .xcodeproj, so this exact
+// container value is provably correct for the ext entry too. Returns null if none found.
+function extractAppReferencedContainer(xml, extName) {
+    const appexName = extName + '.appex';
+    const re = /<BuildActionEntry\b[\s\S]*?<\/BuildActionEntry>/g;
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+        const block = m[0];
+        if (block.indexOf('BuildableName = "' + appexName + '"') !== -1) { continue; } // skip ext entry
+        const c = block.match(/ReferencedContainer = "([^"]*)"/);
+        if (c) { return c[1]; }
     }
-    fs.writeFileSync(schemeFile, s);
-    console.log('[nos-widgets] registered ' + extName + ' in shared scheme for -scheme archive: ' + schemeFile);
+    return null;
+}
+
+// All shared AND per-user schemes named <app>.xcscheme under platforms/ios (workspace- and project-hosted).
+function findAllSchemes(iosDir, appName) {
+    const SKIP = new Set(['Pods', 'build', 'CordovaLib', 'DerivedData']);
+    const out = [];
+    (function walk(dir, depth) {
+        if (depth > 7) { return; }
+        let ents;
+        try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+        for (const ent of ents) {
+            const p = path.join(dir, ent.name);
+            if (ent.isDirectory()) {
+                if (!SKIP.has(ent.name)) { walk(p, depth + 1); }
+            } else if (ent.name === appName + '.xcscheme') {
+                out.push(p);
+            }
+        }
+    })(iosDir, 0);
+    return out;
+}
+
+// Remove a full <BuildActionEntry>...</BuildActionEntry> block whose BuildableName == appexName.
+function stripBuildActionEntryByAppex(xml, appexName) {
+    const re = /<BuildActionEntry\b[\s\S]*?<\/BuildActionEntry>\s*/g;
+    return xml.replace(re, function (block) {
+        return block.indexOf('BuildableName = "' + appexName + '"') !== -1 ? '' : block;
+    });
 }
 
 // Find the uuid of the injected extension native target in the current parsed project. Used when the
@@ -538,4 +622,220 @@ function ensureUrlScheme(plistPath, scheme) {
     }
     fs.writeFileSync(plistPath, content);
     console.log('[nos-widgets] registered widget URL scheme "' + scheme + '" on the app Info.plist.');
+}
+
+// ---------------------------------------------------------------------------- 0.10.0 hardening
+
+// D2/D3: ensure exactly one app->ext PBXTargetDependency exists and the embed Copy-Files phase
+// (dstSubfolderSpec 13) holds the .appex with NO CodeSignOnCopy (which would cause a build cycle).
+function reassertEmbedAndDependency(proj, extUuid, extName) {
+    const objs = proj.hash.project.objects;
+    objs['PBXTargetDependency'] = objs['PBXTargetDependency'] || {};
+    objs['PBXContainerItemProxy'] = objs['PBXContainerItemProxy'] || {};
+    const appUuid = proj.getFirstTarget().uuid;
+    const appTarget = proj.pbxNativeTargetSection()[appUuid];
+
+    // Count existing app->ext dependencies.
+    let depCount = 0;
+    const deps = (appTarget && appTarget.dependencies) || [];
+    deps.forEach(function (d) {
+        const td = objs['PBXTargetDependency'][d.value];
+        if (td && td.target === extUuid) { depCount++; }
+    });
+    if (depCount === 0) {
+        proj.addTargetDependency(appUuid, [extUuid]);
+        console.log('[nos-widgets] (re)added app->ext PBXTargetDependency.');
+    } else {
+        console.log('[nos-widgets] app->ext PBXTargetDependency already present (count=' + depCount + ').');
+    }
+
+    // Strip CodeSignOnCopy from any embed-phase PBXBuildFile referencing <ext>.appex.
+    const buildFiles = objs['PBXBuildFile'] || {};
+    for (const k in buildFiles) {
+        const bf = buildFiles[k];
+        if (bf && typeof bf === 'object' && bf.fileRef_comment &&
+            bf.fileRef_comment.indexOf(extName + '.appex') !== -1 && bf.settings) {
+            console.warn('[nos-widgets] stripping settings (' + JSON.stringify(bf.settings) +
+                ') from embed build file for ' + extName + '.appex');
+            delete bf.settings;
+        }
+    }
+}
+
+// (0.10.0, gated by NOS_WIDGET_PODFILE_TARGET) append an empty Podfile target block so the next
+// `pod install` integrates the ext target into the CocoaPods workspace graph. Idempotent.
+function maybeWritePodfileTarget(iosDir, extName) {
+    const podfile = path.join(iosDir, 'Podfile');
+    let content;
+    try { content = fs.readFileSync(podfile, 'utf8'); } catch (e) {
+        console.warn('[nos-widgets][podfile] no Podfile at ' + podfile + '; skipping target block.');
+        return;
+    }
+    if (new RegExp("target\\s+'" + extName + "'").test(content)) {
+        console.log('[nos-widgets][podfile] target block already present; skipping.');
+        return;
+    }
+    const block = "\ntarget '" + extName + "' do\n  platform :ios, '16.0'\nend\n";
+    fs.writeFileSync(podfile, content.replace(/\s*$/, '\n') + block);
+    console.log('[nos-widgets][podfile] appended empty target block for ' + extName + ' to ' + podfile);
+}
+
+// ---------------------------------------------------------------------------- 0.10.0 diagnostics
+// Emits a [nos-widgets][diag] block: the single source of truth for the next MABS log.
+function runDiagnostics(proj, iosDir, projName, appName, extName, extUuid, hookType) {
+    const D = function () {
+        console.log('[nos-widgets][diag] ' + Array.prototype.join.call(arguments, ' '));
+    };
+    try {
+        D('=========== BEGIN (phase=' + hookType + ') ===========');
+        D('ext uuid =', extUuid, '| ext name =', extName);
+
+        // (a) all native targets
+        const nts = proj.pbxNativeTargetSection();
+        const targetNames = [];
+        for (const k in nts) {
+            if (k.indexOf('_comment') !== -1) { continue; }
+            const t = nts[k];
+            if (t && typeof t === 'object') {
+                targetNames.push(String(t.name).replace(/"/g, '') + '=' + k +
+                    ' [' + String(t.productType || '').replace(/"/g, '') + ']');
+            }
+        }
+        D('native targets (' + targetNames.length + '):');
+        targetNames.forEach(function (n) { D('  target', n); });
+
+        // (b) app target dependencies + proxies
+        const objs = proj.hash.project.objects;
+        const appUuid = proj.getFirstTarget().uuid;
+        const app = nts[appUuid];
+        const deps = (app && app.dependencies) || [];
+        D('app target =', String(app && app.name).replace(/"/g, ''), '(' + appUuid + ') deps=' + deps.length);
+        deps.forEach(function (d) {
+            const td = (objs['PBXTargetDependency'] || {})[d.value] || {};
+            const px = (objs['PBXContainerItemProxy'] || {})[td.targetProxy] || {};
+            D('  dep target=' + td.target +
+              ' proxyType=' + px.proxyType +
+              ' containerPortal=' + px.containerPortal +
+              ' remoteGlobalIDString=' + px.remoteGlobalIDString +
+              ' remoteInfo=' + String(px.remoteInfo || '').replace(/"/g, '') +
+              (td.target === extUuid ? '   <== EXT DEP' : ''));
+        });
+        const extDepOk = deps.some(function (d) {
+            const td = (objs['PBXTargetDependency'] || {})[d.value] || {};
+            return td.target === extUuid;
+        });
+        D('ASSERT app->ext PBXTargetDependency:', extDepOk ? 'PRESENT' : '*** MISSING ***');
+
+        // (c) all copy-files phases (flag dstSubfolderSpec 13 + CodeSignOnCopy)
+        const phases = objs['PBXCopyFilesBuildPhase'] || {};
+        let embedHasAppex = false;
+        for (const pk in phases) {
+            if (pk.indexOf('_comment') !== -1) { continue; }
+            const ph = phases[pk];
+            if (!ph || typeof ph !== 'object') { continue; }
+            const files = (ph.files || []).map(function (f) {
+                const bf = (objs['PBXBuildFile'] || {})[f.value] || {};
+                const csc = bf.settings && JSON.stringify(bf.settings).indexOf('CodeSignOnCopy') !== -1;
+                if (String(bf.fileRef_comment || '').indexOf(extName + '.appex') !== -1 &&
+                    String(ph.dstSubfolderSpec) === '13') { embedHasAppex = true; }
+                return (bf.fileRef_comment || '?') + (csc ? ' [CODESIGNONCOPY!]' : '');
+            });
+            D('  copyPhase dstSubfolderSpec=' + ph.dstSubfolderSpec +
+              ' name=' + String(ph.name || ph.comment || '').replace(/"/g, '') +
+              ' files=[' + files.join(', ') + ']');
+        }
+        D('ASSERT embed(13) contains', extName + '.appex:', embedHasAppex ? 'PRESENT' : '*** MISSING ***');
+
+        // (d) ext productReference basename
+        const ext = nts[extUuid];
+        if (ext) {
+            const prodRef = (objs['PBXFileReference'] || {})[ext.productReference] || {};
+            D('ext productReference basename =', String(prodRef.path || prodRef.name || '?').replace(/"/g, ''));
+        }
+
+        // (e) every scheme + its appex BuildActionEntry + container resolution (D1)
+        const schemes = findAllSchemes(iosDir, appName);
+        const projAbs = path.join(iosDir, projName);
+        D('schemes found:', schemes.length);
+        schemes.forEach(function (sf) {
+            let xml = '';
+            try { xml = fs.readFileSync(sf, 'utf8'); } catch (e) { return; }
+            D('  scheme', sf);
+            // The app entry's container — the value we reuse for the ext entry (D1).
+            const appContainer = extractAppReferencedContainer(xml, extName);
+            D('    app entry container=' + (appContainer || '(none)'));
+            const m = xml.match(/BuildableName = "([^"]*\.appex)"[\s\S]*?ReferencedContainer = "([^"]*)"/);
+            if (!m) { D('    (no .appex BuildActionEntry in this scheme)'); return; }
+            D('    appex entry: BuildableName=' + m[1] + ' container=' + m[2]);
+            D('    ASSERT ext container == app container:' +
+              (appContainer && m[2] === appContainer ? ' YES' : ' *** NO (' + m[2] + ' != ' + appContainer + ') ***'));
+            const bp = xml.match(/BlueprintIdentifier = "([^"]*)"[\s\S]*?BuildableName = "[^"]*\.appex"/);
+            D('    BlueprintIdentifier=' + (bp ? bp[1] : '?') +
+              (bp && bp[1] === extUuid ? ' (matches ext uuid)' : ' (*** uuid MISMATCH ***)'));
+            // Resolve container the way Xcode does: relative to the dir CONTAINING the .xcworkspace
+            // (or .xcodeproj) the scheme belongs to — for a cordova project that is iosDir, where the
+            // .xcodeproj lives. (Resolving relative to the scheme FILE's dir is wrong for workspace-hosted
+            // schemes and produced a misleading MISSING; the decisive signal is "ext container == app
+            // container" above.)
+            const containerRel = m[2].replace(/^container:/, '');
+            const resolved = path.resolve(iosDir, containerRel);
+            let exists = false;
+            try { exists = fs.statSync(resolved).isDirectory(); } catch (e) { exists = false; }
+            D('    container resolves to ' + resolved + ' -> ' + (exists ? 'EXISTS' : '*** MISSING ***') +
+              (path.resolve(projAbs) === resolved ? ' (== app .xcodeproj)' : ' (!= app .xcodeproj at ' + projAbs + ')'));
+            const bid = xml.match(/buildImplicitDependencies = "([^"]*)"/);
+            D('    buildImplicitDependencies=' + (bid ? bid[1] : '(absent)'));
+        });
+
+        // (f) workspace contents
+        const wsData = path.join(iosDir, appName + '.xcworkspace', 'contents.xcworkspacedata');
+        try {
+            const ws = fs.readFileSync(wsData, 'utf8');
+            D('contents.xcworkspacedata FileRefs:');
+            (ws.match(/location = "[^"]*"/g) || []).forEach(function (l) { D('  ' + l); });
+        } catch (e) { D('contents.xcworkspacedata NOT readable at ' + wsData); }
+
+        // (g) Podfile awareness of the ext
+        const podfile = path.join(iosDir, 'Podfile');
+        try {
+            const pf = fs.readFileSync(podfile, 'utf8');
+            D('Podfile mentions ext target:', new RegExp("target\\s+'" + extName + "'").test(pf) ? 'YES' : 'no');
+        } catch (e) { D('Podfile NOT readable at ' + podfile); }
+
+        // (h) THE DECISIVE ONE: ask xcodebuild itself what it enumerates.
+        runXcodebuildList(iosDir, appName, projName, extName, D);
+
+        D('=========== END (phase=' + hookType + ') ===========');
+    } catch (e) {
+        console.error('[nos-widgets][diag] diagnostics threw (non-fatal): ' + e.stack);
+    }
+}
+
+// `xcodebuild -workspace <ws> -list -json` (fallback to -project): the ground truth of what
+// xcodebuild resolves as schemes/targets in the live workspace graph.
+function runXcodebuildList(iosDir, appName, projName, extName, D) {
+    const cp = require('child_process');
+    const ws = path.join(iosDir, appName + '.xcworkspace');
+    const args = fs.existsSync(ws)
+        ? ['-workspace', ws, '-list', '-json']
+        : ['-project', path.join(iosDir, projName), '-list', '-json'];
+    D('running: xcodebuild ' + args.join(' '));
+    let out = '';
+    try {
+        out = cp.execFileSync('xcodebuild', args, { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+        D('xcodebuild -list FAILED: ' + (e.message || e) + (e.stdout ? ' | stdout=' + e.stdout : '') + (e.stderr ? ' | stderr=' + e.stderr : ''));
+        return;
+    }
+    D('xcodebuild -list -json:');
+    out.split('\n').forEach(function (line) { D('  ' + line); });
+    let parsed = null;
+    try { parsed = JSON.parse(out); } catch (e) { /* keep raw */ }
+    if (parsed) {
+        const info = parsed.workspace || parsed.project || {};
+        const schemes = info.schemes || [];
+        const targets = info.targets || [];
+        D('ASSERT "' + extName + '" listed as a SCHEME:', schemes.indexOf(extName) !== -1 ? 'YES' : 'no');
+        D('ASSERT "' + extName + '" listed as a TARGET:', targets.indexOf(extName) !== -1 ? 'YES' : 'no');
+    }
 }
