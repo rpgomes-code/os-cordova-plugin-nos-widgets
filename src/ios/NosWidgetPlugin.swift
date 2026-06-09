@@ -73,7 +73,8 @@ class NosWidgetPlugin: CDVPlugin {
     func onWidgetAction(_ command: CDVInvokedUrlCommand) {
         // Kept-alive callback for future widget->app events (e.g. deep-link routing on launch).
         let result = CDVPluginResult(status: .noResult)
-        result.setKeepCallbackAs(true)
+        // CDVPluginResult(status:) is failable under the iOS 26 SDK -> optional; unwrap before use.
+        result?.setKeepCallbackAs(true)
         commandDelegate.send(result, callbackId: command.callbackId)
     }
 

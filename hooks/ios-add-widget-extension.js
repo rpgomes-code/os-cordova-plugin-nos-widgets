@@ -71,7 +71,8 @@ module.exports = function (context) {
     const signing = {
         teamId: pref('NosWidgetTeamId', 'NOS_WIDGET_TEAM_ID', ''),
         profileSpecifier: pref('NosWidgetProfileSpecifier', 'NOS_WIDGET_PROFILE_SPECIFIER', ''),
-        profilePath: pref('NosWidgetProvisioningProfile', 'NOS_WIDGET_PROVISIONING_PROFILE', '')
+        profilePath: pref('NosWidgetProvisioningProfile', 'NOS_WIDGET_PROVISIONING_PROFILE', ''),
+        profileB64: pref('NosWidgetProvisioningProfileB64', 'NOS_WIDGET_PROVISIONING_PROFILE_B64', '')
     };
 
     if (extensionTargetExists(proj)) {
@@ -134,7 +135,7 @@ module.exports = function (context) {
 
     // 5. Rung 1 (MABS): install the widget's provisioning profile into the build agent's profiles
     //    dir (App-Center-style) so xcodebuild can manual-sign the extension target. No-op if unset.
-    maybeInstallProvisioningProfile(projectRoot, signing.profilePath);
+    maybeInstallProvisioningProfile(projectRoot, signing.profilePath, signing.profileB64);
 
     // 6. Build settings for the extension configurations (incl. signing).
     applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntName, signing);
@@ -193,37 +194,54 @@ function readConfigXml(iosDir, appName, projectRoot) {
 // Rung 1 (MABS): copy the widget's provisioning profile into the build agent's profiles dir so
 // xcodebuild can manual-sign the extension. Renames to <UUID>.mobileprovision when extractable.
 // Pure no-op (with a log) when unconfigured or the file is missing — never breaks a build.
-function maybeInstallProvisioningProfile(projectRoot, profilePath) {
-    if (!profilePath) {
+function maybeInstallProvisioningProfile(projectRoot, profilePath, profileB64) {
+    if (!profilePath && !profileB64) {
         console.log('[nos-widgets] no widget provisioning profile configured; skipping profile install (Simulator/local, or MABS-managed signing).');
         return;
     }
-    const candidates = [
-        path.isAbsolute(profilePath) ? profilePath : null,
-        path.resolve(projectRoot, profilePath),
-        path.join(projectRoot, 'plugins', PLUGIN_ID, profilePath)
-    ].filter(Boolean);
-    let src = candidates.find(function (p) {
-        try { return fs.statSync(p).isFile(); } catch (e) { return false; }
-    });
-    if (!src) {
-        // MABS may drop an OutSystems module Resource somewhere other than the literal path (it bundles
-        // a Resource under www/<module>/... at its Runtime Path). Scan the generated project tree for the
-        // filename so the profile is found wherever it lands — no need to know the exact MABS path up front.
-        const base = path.basename(profilePath);
-        const matches = scanForFile(projectRoot, base, 9);
-        if (matches.length) {
-            src = matches[0];
-            console.log('[nos-widgets] provisioning profile "' + base + '" located via project scan -> ' + src +
-                (matches.length > 1 ? '  (' + matches.length + ' matches: ' + matches.join(', ') + ')' : ''));
+    let src = null;
+    if (profilePath) {
+        const candidates = [
+            path.isAbsolute(profilePath) ? profilePath : null,
+            path.resolve(projectRoot, profilePath),
+            path.join(projectRoot, 'plugins', PLUGIN_ID, profilePath)
+        ].filter(Boolean);
+        src = candidates.find(function (p) {
+            try { return fs.statSync(p).isFile(); } catch (e) { return false; }
+        });
+        if (!src) {
+            // MABS may drop an OutSystems module Resource somewhere other than the literal path. Scan the
+            // generated project tree for the filename so it's found wherever it lands.
+            const base = path.basename(profilePath);
+            const matches = scanForFile(projectRoot, base, 9);
+            if (matches.length) {
+                src = matches[0];
+                console.log('[nos-widgets] provisioning profile "' + base + '" located via project scan -> ' + src +
+                    (matches.length > 1 ? '  (' + matches.length + ' matches: ' + matches.join(', ') + ')' : ''));
+            }
+        }
+    }
+    // Guaranteed-delivery fallback: the .mobileprovision passed INLINE as base64 in a plugin variable.
+    // This never depends on a file / OutSystems Resource reaching the MABS build tree.
+    if (!src && profileB64) {
+        try {
+            const buf = Buffer.from(String(profileB64).replace(/\s+/g, ''), 'base64');
+            if (buf && buf.length > 500) {
+                src = path.join(os.tmpdir(), 'nos-widget.mobileprovision');
+                fs.writeFileSync(src, buf);
+                console.log('[nos-widgets] widget provisioning profile decoded from NOS_WIDGET_PROVISIONING_PROFILE_B64 (' + buf.length + ' bytes) -> ' + src);
+            } else {
+                console.warn('[nos-widgets] NOS_WIDGET_PROVISIONING_PROFILE_B64 decoded to ' + (buf ? buf.length : 0) + ' bytes (too small); ignoring.');
+            }
+        } catch (e) {
+            console.warn('[nos-widgets] could not decode NOS_WIDGET_PROVISIONING_PROFILE_B64: ' + e.message);
         }
     }
     if (!src) {
-        console.warn('[nos-widgets] provisioning profile "' + profilePath + '" NOT found. Looked at: [' +
-            candidates.join(', ') + '] and scanned the project tree for "' + path.basename(profilePath) +
-            '". Skipping — the widget extension may fail to sign on device. Confirm the OutSystems ' +
-            'Resource is included in the build, or set NOS_WIDGET_PROVISIONING_PROFILE to its path ' +
-            'relative to the project root.');
+        console.warn('[nos-widgets] widget provisioning profile NOT found (tried path "' + (profilePath || '') +
+            '" + project scan' + (profileB64 ? ' + base64' : '') + '). Skipping — the widget extension may fail ' +
+            'to sign on device. Set NOS_WIDGET_PROVISIONING_PROFILE_B64 to the base64 of the .mobileprovision ' +
+            '(guaranteed), or ensure the file reaches the build tree.');
         return;
     }
     let destName = path.basename(src);
