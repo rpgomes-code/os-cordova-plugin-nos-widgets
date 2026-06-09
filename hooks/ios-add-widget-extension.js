@@ -82,6 +82,25 @@ module.exports = function (context) {
     console.log('[nos-widgets] hook phase=' + hookType + ' ext=' + EXT_NAME +
         ' podfileTarget=' + (podfileTargetOn ? 'ON' : 'off'));
 
+    // 0.13.0 EXPORT-SIGNING FIX: when MABS signs (a provisioning profile is set in build.json), cordova-ios
+    // builds exportOptions.plist from build.json's `provisioningProfile`. As a STRING it maps ONLY the app
+    // bundle id, so `xcodebuild -exportArchive` tries to sign the widget .appex with the app profile and fails
+    // ("profile ... does not match the bundle ID ...widget"). As an OBJECT it is passed through verbatim
+    // (per-bundle-id). We rewrite that build.json string -> { <appId>: <appProfile>, <widgetId>:
+    // NOS_WIDGET_PROFILE_SPECIFIER } so the export signs the .appex with the widget profile. build.json is read
+    // ONCE at cordova-ios build() start, which runs AFTER before_compile, so rewriting it here is honored.
+    // Runs at before_compile only (must also run on the re-entrant pass where the target already exists, hence
+    // it is BEFORE the extensionTargetExists early-return). Idempotent; fully non-fatal.
+    if (hookType === 'before_compile') {
+        try {
+            const _mainId = getBundleIdFromConfig(projectRoot) || getMainBundleId(proj);
+            const _extId = _mainId ? (_mainId + '.' + bundleSuffix) : null;
+            rewriteBuildJsonProvisioning(context, _mainId, _extId, signing.profileSpecifier);
+        } catch (e) {
+            console.error('[nos-widgets] build.json provisioning rewrite skipped (non-fatal): ' + (e && e.message));
+        }
+    }
+
     if (extensionTargetExists(proj)) {
         // Already injected — either an earlier prepare in this build, or this hook running again at
         // before_compile (registered for BOTH). Some MABS / cordova-ios pipelines REWRITE the .pbxproj
@@ -256,6 +275,70 @@ function purgeCordovaProjectFileCache(projectRoot, iosDir) {
     if (purged === 0) {
         console.warn('[nos-widgets] could NOT purge cordova-ios projectFile cache (module not resolvable). ' +
             'On a MABS signing build the extension may be stripped by writeCodeSignStyle (CB-11258).');
+    }
+}
+
+// 0.13.0 EXPORT-SIGNING FIX. cordova-ios's lib/build.js builds exportOptions.plist from build.json's
+// `provisioningProfile`: a STRING produces a single { <appBundleId>: profile } map (no entry for the widget
+// appex bundle id -> `xcodebuild -exportArchive` signs the .appex with the app profile and FAILS); an OBJECT
+// is passed through verbatim (per-bundle-id, the multi-profile branch). We convert the string into an object
+// that ALSO maps the widget bundle id to the widget profile (NOS_WIDGET_PROFILE_SPECIFIER). The app entry is
+// kept FIRST so cordova-ios's project-wide build-extras.xcconfig fallback (Object.keys()[0]) stays the app
+// profile; the widget target's own PROVISIONING_PROFILE_SPECIFIER (set in applyExtensionBuildSettings, a
+// per-target pbxproj setting that overrides the project-wide xcconfig) signs the .appex in the archive.
+// build.json is read ONCE at cordova-ios build() start (after before_compile), so editing it here is honored.
+// Idempotent (object/widget-key already present -> no-op) and fully non-fatal (every guard logs and returns).
+// On a local CODE_SIGNING_ALLOWED=NO build there is no buildConfig, so this is skipped entirely.
+function rewriteBuildJsonProvisioning(context, appBundleId, extBundleId, widgetProfileSpecifier) {
+    const buildConfig = context && context.opts && context.opts.options && context.opts.options.buildConfig;
+    if (!buildConfig) { console.log('[nos-widgets] no buildConfig (local/unsigned build) — skipping build.json rewrite'); return; }
+    if (!fs.existsSync(buildConfig)) { console.log('[nos-widgets] buildConfig not found at ' + buildConfig + ' — skipping'); return; }
+    if (!appBundleId || !extBundleId) { console.log('[nos-widgets] could not derive app/ext bundle id — skipping build.json rewrite'); return; }
+    if (!widgetProfileSpecifier) { console.log('[nos-widgets] NOS_WIDGET_PROFILE_SPECIFIER unset — skipping build.json rewrite'); return; }
+
+    let json;
+    try { json = JSON.parse(fs.readFileSync(buildConfig, 'utf8')); }
+    catch (e) { console.error('[nos-widgets] build.json unparseable (' + e.message + ') — leaving as-is'); return; }
+
+    const ios = json && json.ios;
+    if (!ios) { console.log('[nos-widgets] build.json has no "ios" section — skipping'); return; }
+
+    let changed = false;
+    ['debug', 'release'].forEach(function (cfg) {
+        const block = ios[cfg];
+        if (!block) { return; }
+        const pp = block.provisioningProfile;
+        if (pp && typeof pp === 'object') {
+            // Already an object: ensure the widget key is present, keeping the app key FIRST.
+            if (!pp[extBundleId]) {
+                const rebuilt = {};
+                if (pp[appBundleId]) { rebuilt[appBundleId] = pp[appBundleId]; }
+                Object.keys(pp).forEach(function (k) { if (k !== appBundleId) { rebuilt[k] = pp[k]; } });
+                rebuilt[extBundleId] = widgetProfileSpecifier;
+                block.provisioningProfile = rebuilt;
+                changed = true;
+                console.log('[nos-widgets] build.json[' + cfg + ']: added widget key to existing object map');
+            } else {
+                console.log('[nos-widgets] build.json[' + cfg + ']: widget key already present — idempotent no-op');
+            }
+        } else if (typeof pp === 'string') {
+            // THE FIX: string -> object, app key FIRST.
+            const map = {};
+            map[appBundleId] = pp;
+            map[extBundleId] = widgetProfileSpecifier;
+            block.provisioningProfile = map;
+            changed = true;
+            console.log('[nos-widgets] build.json[' + cfg + ']: STRING "' + pp + '" -> { ' +
+                appBundleId + ': "' + pp + '", ' + extBundleId + ': "' + widgetProfileSpecifier + '" }');
+        } else {
+            console.log('[nos-widgets] build.json[' + cfg + ']: no provisioningProfile — skipping');
+        }
+    });
+
+    if (changed) {
+        fs.writeFileSync(buildConfig, JSON.stringify(json, null, 2));
+        console.log('[nos-widgets] build.json rewritten at ' + buildConfig +
+            ' (export will now map the widget bundle id to its own profile).');
     }
 }
 
