@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.10.0">
+        id="os-cordova-plugin-nos-widgets" version="0.11.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
@@ -181,5 +181,16 @@
              (idempotent: re-injects if the target was dropped, else re-asserts the scheme) restores
              the wiring right before xcodebuild archives. -->
         <hook type="before_compile" src="hooks/ios-add-widget-extension.js"/>
+
+        <!-- 0.11.0 MAXIMUM INSTRUMENTATION: a PURE-DIAGNOSTIC hook (NO injection, safe at ANY stage)
+             registered for EVERY iOS hook phase. It reads the pbxproj / schemes / workspace / Podfile
+             with raw fs + regex and dumps a "[nos-diag] " block at each phase, so a MABS build reveals
+             EXACTLY when/where the injected NosWidgetExtension wiring is lost between stages. -->
+        <hook type="before_prepare" src="hooks/ios-widget-diag.js"/>
+        <hook type="after_prepare" src="hooks/ios-widget-diag.js"/>
+        <hook type="before_compile" src="hooks/ios-widget-diag.js"/>
+        <hook type="after_compile" src="hooks/ios-widget-diag.js"/>
+        <hook type="before_build" src="hooks/ios-widget-diag.js"/>
+        <hook type="after_build" src="hooks/ios-widget-diag.js"/>
     </platform>
 </plugin>

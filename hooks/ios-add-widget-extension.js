@@ -93,6 +93,8 @@ module.exports = function (context) {
         console.log('[nos-widgets] extension target already present (uuid=' + existingUuid + '); re-asserting wiring.');
         if (existingUuid) {
             reassertEmbedAndDependency(proj, existingUuid, EXT_NAME);
+            // 0.11.0: (re)add the inside-xcodebuild run-script markers (idempotent — guarded by name).
+            addInstrumentationBuildPhases(proj, existingUuid, EXT_NAME);
             fs.writeFileSync(pbxPath, proj.writeSync());
             addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, existingUuid);
         }
@@ -173,6 +175,9 @@ module.exports = function (context) {
     // 6b. Strip CodeSignOnCopy from the embed Copy-Files phase if a round-trip ever added it (D2),
     //     and make sure exactly one app->ext dependency exists (D3). Cheap insurance.
     reassertEmbedAndDependency(proj, target.uuid, EXT_NAME);
+
+    // 6c. 0.11.0: add the inside-xcodebuild run-script markers ([nos-rs][ext] / [nos-rs][app]).
+    addInstrumentationBuildPhases(proj, target.uuid, EXT_NAME);
 
     fs.writeFileSync(pbxPath, proj.writeSync());
 
@@ -662,6 +667,111 @@ function reassertEmbedAndDependency(proj, extUuid, extName) {
     }
 }
 
+// ---------------------------------------------------------------------------- 0.11.0 instrumentation
+// INSIDE-XCODEBUILD run-script markers. If the [nos-rs][ext] marker NEVER appears in a MABS log, the
+// extension target was excluded from xcodebuild's build graph (the smoking gun we're hunting). The
+// [nos-rs][app] marker (added as the FIRST app build phase, so it runs early) lists the products dir
+// and any embedded .appex so we can see, from INSIDE the build, whether the appex was produced/embedded.
+//
+// Idempotent: guarded by name so the before_compile re-run does not duplicate them, and (re)added in
+// BOTH the fresh-inject path and the already-exists/before_compile path.
+const EXT_RS_PHASE_NAME = '[nos-rs] NosWidgetExtension marker';
+const APP_RS_PHASE_NAME = '[nos-rs] App build marker';
+const EXT_RS_MARKER = '[nos-rs][ext] NosWidgetExtension TARGET BUILDING';
+const APP_RS_MARKER = '[nos-rs][app] building';
+
+function addInstrumentationBuildPhases(proj, extUuid, extName) {
+    try {
+        const objs = proj.hash.project.objects;
+        const appUuid = proj.getFirstTarget().uuid;
+
+        // --- EXTENSION target marker --------------------------------------------------------------
+        if (!shellPhaseExistsOnTarget(proj, extUuid, EXT_RS_PHASE_NAME)) {
+            const extScript =
+                'echo "' + EXT_RS_MARKER + ' action=$ACTION config=$CONFIGURATION sdk=$SDKROOT ' +
+                'archs=$ARCHS bundle=$PRODUCT_BUNDLE_IDENTIFIER"';
+            proj.addBuildPhase([], 'PBXShellScriptBuildPhase', EXT_RS_PHASE_NAME, extUuid, {
+                shellPath: '/bin/sh',
+                shellScript: extScript
+            });
+            // 0.11.0 fix: DISABLE Xcode's full-env dump (showEnvVarsInLog=0). The script already echoes the
+            // specific vars we need; the full script-phase env on a SIGNING build leaks team/cert/profile
+            // identity (DEVELOPMENT_TEAM, EXPANDED_CODE_SIGN_IDENTITY, PROVISIONING_PROFILE, keychain/agent
+            // paths) into a log the user shares verbatim. node-xcode omits the key by default and Xcode treats
+            // an ABSENT key as ON, so we must write 0 explicitly to suppress the dump.
+            setShellPhaseFlags(proj, extUuid, EXT_RS_PHASE_NAME, { showEnvVarsInLog: 0 });
+            console.log('[nos-widgets] added EXT run-script marker phase to ' + extName + '.');
+        } else {
+            console.log('[nos-widgets] EXT run-script marker phase already present; skipping.');
+        }
+
+        // --- APP target marker (FIRST build phase) ------------------------------------------------
+        if (!shellPhaseExistsOnTarget(proj, appUuid, APP_RS_PHASE_NAME)) {
+            const appScript = [
+                'echo "' + APP_RS_MARKER + ' action=$ACTION config=$CONFIGURATION ' +
+                    'scheme=$SCHEME_NAME target=$TARGET_NAME"',
+                'echo "[nos-rs][app] BUILT_PRODUCTS_DIR=$BUILT_PRODUCTS_DIR"',
+                'ls -la "$BUILT_PRODUCTS_DIR" 2>/dev/null || true',
+                'ls -la "$BUILT_PRODUCTS_DIR"/*.appex 2>/dev/null || true',
+                'ls -la "${CODESIGNING_FOLDER_PATH}/PlugIns" 2>/dev/null || true',
+                'echo "[nos-rs][app] end"'
+            ].join('\n');
+            const res = proj.addBuildPhase([], 'PBXShellScriptBuildPhase', APP_RS_PHASE_NAME, appUuid, {
+                shellPath: '/bin/sh',
+                shellScript: appScript
+            });
+            setShellPhaseFlags(proj, appUuid, APP_RS_PHASE_NAME, { showEnvVarsInLog: 0 }); // 0.11.0: no full-env dump (see EXT phase note)
+            // addBuildPhase pushes to the END of buildPhases; move it to the FRONT so it runs early.
+            moveBuildPhaseToFront(proj, appUuid, res.uuid);
+            console.log('[nos-widgets] added APP run-script marker phase (as first phase) to app target.');
+        } else {
+            console.log('[nos-widgets] APP run-script marker phase already present; skipping.');
+        }
+    } catch (e) {
+        console.warn('[nos-widgets] addInstrumentationBuildPhases failed (non-fatal): ' + (e && e.stack ? e.stack : e));
+    }
+}
+
+// True if the given native target already has a PBXShellScriptBuildPhase with this name.
+function shellPhaseExistsOnTarget(proj, targetUuid, phaseName) {
+    const objs = proj.hash.project.objects;
+    const target = (objs['PBXNativeTarget'] || {})[targetUuid];
+    if (!target || !Array.isArray(target.buildPhases)) { return false; }
+    const phases = objs['PBXShellScriptBuildPhase'] || {};
+    const quoted = '"' + phaseName + '"';
+    return target.buildPhases.some(function (bp) {
+        const ph = phases[bp.value];
+        return ph && (ph.name === quoted || ph.name === phaseName);
+    });
+}
+
+// Set extra flags (e.g. showEnvVarsInLog) on the named shell phase of a target.
+function setShellPhaseFlags(proj, targetUuid, phaseName, flags) {
+    const objs = proj.hash.project.objects;
+    const target = (objs['PBXNativeTarget'] || {})[targetUuid];
+    if (!target || !Array.isArray(target.buildPhases)) { return; }
+    const phases = objs['PBXShellScriptBuildPhase'] || {};
+    const quoted = '"' + phaseName + '"';
+    target.buildPhases.forEach(function (bp) {
+        const ph = phases[bp.value];
+        if (ph && (ph.name === quoted || ph.name === phaseName)) {
+            Object.keys(flags).forEach(function (k) { ph[k] = flags[k]; });
+        }
+    });
+}
+
+// Move a build-phase reference to the FRONT of a target's buildPhases array (so it runs first).
+function moveBuildPhaseToFront(proj, targetUuid, phaseUuid) {
+    const objs = proj.hash.project.objects;
+    const target = (objs['PBXNativeTarget'] || {})[targetUuid];
+    if (!target || !Array.isArray(target.buildPhases)) { return; }
+    const idx = target.buildPhases.findIndex(function (bp) { return bp.value === phaseUuid; });
+    if (idx > 0) {
+        const item = target.buildPhases.splice(idx, 1)[0];
+        target.buildPhases.unshift(item);
+    }
+}
+
 // (0.10.0, gated by NOS_WIDGET_PODFILE_TARGET) append an empty Podfile target block so the next
 // `pod install` integrates the ext target into the CocoaPods workspace graph. Idempotent.
 function maybeWritePodfileTarget(iosDir, extName) {
@@ -802,8 +912,23 @@ function runDiagnostics(proj, iosDir, projName, appName, extName, extUuid, hookT
             D('Podfile mentions ext target:', new RegExp("target\\s+'" + extName + "'").test(pf) ? 'YES' : 'no');
         } catch (e) { D('Podfile NOT readable at ' + podfile); }
 
-        // (h) THE DECISIVE ONE: ask xcodebuild itself what it enumerates.
-        runXcodebuildList(iosDir, appName, projName, extName, D);
+        // (i) 0.11.0: ext target's resolved XCBuildConfiguration build settings from the pbxproj — cheap
+        //     (no xcodebuild), so run it at every phase. Spots an exclusion setting (SDKROOT /
+        //     SUPPORTED_PLATFORMS / SKIP_INSTALL / EXCLUDED_ARCHITECTURES / ONLY_ACTIVE_ARCH ...).
+        dumpExtResolvedBuildSettings(proj, extName, D);
+
+        // (h)+(j) THE DECISIVE xcodebuild probes: -list (schemes/targets) and -showBuildSettings (does the
+        //     scheme resolution include the ext target?). Each SPAWNS a blocking xcodebuild against the live
+        //     workspace graph (tens of seconds to minutes on the ~46-target MABS Pods workspace). To avoid
+        //     adding that cost TWICE to a PAID build, run them ONLY at before_compile — the exact pre-archive
+        //     state that decides the outcome. (after_prepare still gets the cheap dumps above + the full
+        //     per-phase ios-widget-diag.js timeline.)
+        if (hookType === 'before_compile') {
+            runXcodebuildList(iosDir, appName, projName, extName, D);
+            runShowBuildSettings(iosDir, appName, projName, extName, D);
+        } else {
+            D('skipping xcodebuild -list/-showBuildSettings at phase=' + hookType + ' (they run at before_compile)');
+        }
 
         D('=========== END (phase=' + hookType + ') ===========');
     } catch (e) {
@@ -822,9 +947,15 @@ function runXcodebuildList(iosDir, appName, projName, extName, D) {
     D('running: xcodebuild ' + args.join(' '));
     let out = '';
     try {
-        out = cp.execFileSync('xcodebuild', args, { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
+        out = cp.execFileSync('xcodebuild', args, {
+            encoding: 'utf8', timeout: 180000, maxBuffer: 64 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: Object.assign({}, process.env, { LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' })
+        });
     } catch (e) {
-        D('xcodebuild -list FAILED: ' + (e.message || e) + (e.stdout ? ' | stdout=' + e.stdout : '') + (e.stderr ? ' | stderr=' + e.stderr : ''));
+        const timedOut = e && (e.code === 'ETIMEDOUT' || /ETIMEDOUT/.test(String(e.message)));
+        D('xcodebuild -list ' + (timedOut ? 'TIMED OUT (INCONCLUSIVE — not a NO)' : 'FAILED') + ': ' + (e.message || e) +
+          (e.stdout ? ' | stdout=' + String(e.stdout).slice(0, 1000) : '') + (e.stderr ? ' | stderr=' + String(e.stderr).slice(0, 1000) : ''));
         return;
     }
     D('xcodebuild -list -json:');
@@ -837,5 +968,87 @@ function runXcodebuildList(iosDir, appName, projName, extName, D) {
         const targets = info.targets || [];
         D('ASSERT "' + extName + '" listed as a SCHEME:', schemes.indexOf(extName) !== -1 ? 'YES' : 'no');
         D('ASSERT "' + extName + '" listed as a TARGET:', targets.indexOf(extName) !== -1 ? 'YES' : 'no');
+    }
+}
+
+// 0.11.0: `xcodebuild -showBuildSettings -scheme <app> -json`. This resolves the SCHEME's build
+// graph (the same resolution xcodebuild archive uses). If the ext target appears here (an entry whose
+// target/PRODUCT_NAME == <ext>), the scheme resolution INCLUDES it; if not, xcodebuild has dropped it
+// from the graph BEFORE compiling — the exact failure we're hunting on MABS. Non-fatal, ~300s timeout.
+function runShowBuildSettings(iosDir, appName, projName, extName, D) {
+    const cp = require('child_process');
+    const ws = path.join(iosDir, appName + '.xcworkspace');
+    const baseArgs = fs.existsSync(ws)
+        ? ['-workspace', ws, '-scheme', appName]
+        : ['-project', path.join(iosDir, projName), '-scheme', appName];
+    const args = ['-showBuildSettings'].concat(baseArgs).concat(['-json']);
+    D('running: xcodebuild ' + args.join(' '));
+    let out = '';
+    try {
+        out = cp.execFileSync('xcodebuild', args, {
+            encoding: 'utf8', timeout: 300000, maxBuffer: 64 * 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: Object.assign({}, process.env, { LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8' })
+        });
+    } catch (e) {
+        const timedOut = e && (e.code === 'ETIMEDOUT' || /ETIMEDOUT/.test(String(e.message)));
+        D('xcodebuild -showBuildSettings ' + (timedOut
+            ? 'TIMED OUT after 300s (INCONCLUSIVE — does NOT mean the ext is absent)'
+            : 'FAILED') + ': ' + (e.message || e) +
+          (e.stderr ? ' | stderr=' + String(e.stderr).slice(0, 2000) : ''));
+        return;
+    }
+    let parsed = null;
+    // -showBuildSettings -json emits a JSON array of { target, action, buildSettings } entries.
+    try { parsed = JSON.parse(out); } catch (e) {
+        D('xcodebuild -showBuildSettings -json: could not parse JSON (' + e.message + '); raw head:');
+        out.split('\n').slice(0, 20).forEach(function (l) { D('  ' + l); });
+        return;
+    }
+    if (!Array.isArray(parsed)) { parsed = [parsed]; }
+    const names = parsed.map(function (entry) {
+        const bs = (entry && entry.buildSettings) || {};
+        return entry.target || bs.PRODUCT_NAME || bs.TARGET_NAME || '?';
+    });
+    D('showBuildSettings returned ' + parsed.length + ' target entr(y/ies): [' + names.join(', ') + ']');
+    const extIncluded = parsed.some(function (entry) {
+        const bs = (entry && entry.buildSettings) || {};
+        return entry.target === extName || bs.PRODUCT_NAME === extName || bs.TARGET_NAME === extName;
+    });
+    D('ASSERT scheme resolution (showBuildSettings) includes "' + extName + '":',
+      extIncluded ? 'YES' : '*** NO — ext target NOT in the resolved scheme graph ***');
+}
+
+// 0.11.0: dump the EXTENSION target's resolved XCBuildConfiguration build settings straight from the
+// parsed pbxproj (no xcodebuild needed). Spotlights settings that could exclude it from a build:
+// SDKROOT / SUPPORTED_PLATFORMS / PRODUCT_TYPE / SKIP_INSTALL / IPHONEOS_DEPLOYMENT_TARGET /
+// CODE_SIGN_STYLE / EXCLUDED_ARCHITECTURES / ONLY_ACTIVE_ARCH.
+function dumpExtResolvedBuildSettings(proj, extName, D) {
+    const KEYS = ['SDKROOT', 'SUPPORTED_PLATFORMS', 'PRODUCT_TYPE', 'SKIP_INSTALL',
+        'IPHONEOS_DEPLOYMENT_TARGET', 'CODE_SIGN_STYLE', 'EXCLUDED_ARCHITECTURES',
+        'ONLY_ACTIVE_ARCH', 'PRODUCT_BUNDLE_IDENTIFIER', 'PRODUCT_NAME'];
+    try {
+        const configs = proj.pbxXCBuildConfigurationSection();
+        const quotedExt = '"' + extName + '"';
+        let found = 0;
+        for (const key in configs) {
+            if (key.indexOf('_comment') !== -1) { continue; }
+            const c = configs[key];
+            if (!c || !c.buildSettings) { continue; }
+            if (c.buildSettings.PRODUCT_NAME !== quotedExt && c.buildSettings.PRODUCT_NAME !== extName) { continue; }
+            found++;
+            D('ext build settings (config name=' + String(c.name || '?').replace(/"/g, '') + '):');
+            KEYS.forEach(function (k) {
+                D('  ' + k + ' = ' + (typeof c.buildSettings[k] === 'undefined' ? '(unset)' : c.buildSettings[k]));
+            });
+        }
+        if (found > 0) {
+            D('  NOTE: cordova-ios build() runs writeCodeSignStyle AFTER this hook and overwrites CODE_SIGN_STYLE');
+            D('        on ALL targets — the CODE_SIGN_STYLE above is the PRE-build value; see the after_compile');
+            D('        [nos-diag] re-read for what xcodebuild actually used.');
+        }
+        if (found === 0) { D('ext build settings: NONE found (PRODUCT_NAME=' + extName + ' absent from XCBuildConfiguration)'); }
+    } catch (e) {
+        D('dumpExtResolvedBuildSettings threw (non-fatal): ' + (e.message || e));
     }
 }
