@@ -70,6 +70,35 @@ The **only** difference between the working local archive (3 targets, **no Pods*
 archive (**46 targets, with Pods**, extension absent) is the **OutSystems fork + its CocoaPods workspace
 assembly and signing inputs**.
 
+## Diagnostic proof — the project is correct; xcodebuild silently drops the target (plugin 0.10.0)
+
+Plugin 0.10.0 added a self-diagnostic that runs at `before_compile` (the exact state `xcodebuild archive`
+consumes) and dumps the project/scheme via node-xcode + `xcodebuild -list -json`. On a real MABS build it
+reported **every required wiring as correct**, yet the archive still omits the extension:
+
+```
+[nos-widgets][diag] native targets (2): ... NosWidgetExtension=BE3C... [com.apple.product-type.app-extension]
+[nos-widgets][diag] ASSERT app->ext PBXTargetDependency: PRESENT
+[nos-widgets][diag]   dep ... proxyType=1 containerPortal=<project rootObject> remoteGlobalIDString=<ext uuid>  <== EXT DEP
+[nos-widgets][diag]   copyPhase dstSubfolderSpec=13 name=Copy Files files=[NosWidgetExtension.appex]
+[nos-widgets][diag] ASSERT embed(13) contains NosWidgetExtension.appex: PRESENT
+[nos-widgets][diag]   appex entry: BuildableName=NosWidgetExtension.appex container=container:Outsystems Test App (Only DEV).xcodeproj
+[nos-widgets][diag]   ASSERT ext container == app container: YES
+[nos-widgets][diag]   BlueprintIdentifier=BE3C... (matches ext uuid)
+[nos-widgets][diag]   container resolves to .../Outsystems Test App (Only DEV).xcodeproj -> EXISTS (== app .xcodeproj)
+[nos-widgets][diag]   buildImplicitDependencies=YES
+```
+i.e. the extension target exists, the app→extension `PBXTargetDependency` is present and well-formed
+(`proxyType=1`, `containerPortal`=project root object), the "Embed App Extensions" copy phase contains the
+`.appex`, and the shared scheme's `BuildActionEntry` uses the **same `ReferencedContainer` as the app's own
+(working) entry**, with a matching `BlueprintIdentifier`, a container that resolves to the real app
+`.xcodeproj`, and `buildImplicitDependencies="YES"`. The `before_compile` hook also proves nothing rewrites
+the project afterward. **Despite all of this, `xcodebuild -workspace … -scheme … archive` reports
+`Target dependency graph (46 targets)` with `NosWidgetExtension` absent, compiles 0 widget sources, embeds no
+`.appex`, and ARCHIVE SUCCEEDS with no error.** The same project (same hook) builds and embeds the `.appex`
+locally on Apache cordova-ios 7.1.1 (with and without CocoaPods). This is the definitive evidence that the
+silent drop is in the MABS archive of the integrated Pods workspace, not in the plugin's project/scheme.
+
 ## Likely mechanism (please confirm)
 
 Either or both:
