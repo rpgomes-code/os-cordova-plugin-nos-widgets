@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
         xmlns:android="http://schemas.android.com/apk/res/android"
-        id="os-cordova-plugin-nos-widgets" version="0.8.0">
+        id="os-cordova-plugin-nos-widgets" version="0.9.0">
 
     <name>NOS Native Widgets</name>
     <description>Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.</description>
@@ -170,5 +170,11 @@
           (NOS_WIDGET_TEAM_ID / NOS_WIDGET_PROFILE_SPECIFIER / NOS_WIDGET_PROVISIONING_PROFILE).
         -->
         <hook type="after_prepare" src="hooks/ios-add-widget-extension.js"/>
+        <!-- ALSO run at before_compile: some MABS / cordova-ios pipelines rewrite the generated
+             .pbxproj or regenerate the shared scheme AFTER after_prepare, dropping the injected
+             extension target/dependency and leaving the scheme entry dangling. Re-running here
+             (idempotent: re-injects if the target was dropped, else re-asserts the scheme) restores
+             the wiring right before xcodebuild archives. -->
+        <hook type="before_compile" src="hooks/ios-add-widget-extension.js"/>
     </platform>
 </plugin>

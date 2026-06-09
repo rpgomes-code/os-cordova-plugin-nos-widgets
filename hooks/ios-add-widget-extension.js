@@ -76,7 +76,15 @@ module.exports = function (context) {
     };
 
     if (extensionTargetExists(proj)) {
-        console.log('[nos-widgets] extension target already present; skipping injection.');
+        // Already injected — either an earlier prepare in this build, or this hook running again at
+        // before_compile (it is registered for BOTH after_prepare and before_compile). Some MABS /
+        // cordova-ios pipelines REWRITE the .pbxproj or regenerate the shared scheme AFTER after_prepare,
+        // which drops the app->extension dependency and leaves the scheme's BuildActionEntry dangling, so
+        // xcodebuild silently skips the extension and the app ships with no widget. Re-assert the shared-
+        // scheme registration here against the extension's CURRENT uuid so it survives such a rewrite.
+        const existingUuid = findExtensionTargetUuid(proj, EXT_NAME);
+        console.log('[nos-widgets] extension target already present (uuid=' + existingUuid + '); re-asserting shared-scheme registration.');
+        if (existingUuid) { addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, existingUuid); }
         return;
     }
 
@@ -347,6 +355,22 @@ function addExtensionToSharedScheme(iosDir, projName, appName, extName, extTarge
     }
     fs.writeFileSync(schemeFile, s);
     console.log('[nos-widgets] registered ' + extName + ' in shared scheme for -scheme archive: ' + schemeFile);
+}
+
+// Find the uuid of the injected extension native target in the current parsed project. Used when the
+// target already exists (e.g. the before_compile re-run) to re-assert the scheme registration against
+// the live uuid rather than a stale one.
+function findExtensionTargetUuid(proj, extName) {
+    const targets = proj.pbxNativeTargetSection();
+    for (const k in targets) {
+        if (k.indexOf('_comment') !== -1) { continue; }
+        const t = targets[k];
+        if (t && typeof t === 'object') {
+            const n = String(t.name || '').replace(/^"|"$/g, '');
+            if (n === extName) { return k; }
+        }
+    }
+    return null;
 }
 
 function getBundleIdFromConfig(projectRoot) {
