@@ -1,6 +1,6 @@
 {
   "name": "os-cordova-plugin-nos-widgets",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Native home-screen widgets (Android Jetpack Glance / iOS WidgetKit) for OutSystems 11 mobile apps.",
   "cordova": {
     "id": "os-cordova-plugin-nos-widgets",

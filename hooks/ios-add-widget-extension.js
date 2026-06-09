@@ -148,6 +148,15 @@ module.exports = function (context) {
     applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntName, signing);
 
     fs.writeFileSync(pbxPath, proj.writeSync());
+
+    // 7. Register the extension in the app's SHARED SCHEME's BuildActionEntries. CRITICAL for MABS:
+    //    cordova-ios 7's `xcodebuild -workspace -scheme archive` only builds targets that are in the
+    //    scheme (or a resolved dependency of one). The embed Copy-Files phase + target dependency alone
+    //    do NOT pull the extension into the build graph on cordova-ios 7 (verified: the archive's target
+    //    dependency graph omits it), so the .appex is never built and the app ships with NO widget.
+    //    (cordova-ios 8 DOES build it via the embed phase, which is why it looked fine in a cordova-ios-8
+    //    repro.) node-xcode has no scheme API, so the .xcscheme XML is patched directly.
+    addExtensionToSharedScheme(iosDir, projName, appName, EXT_NAME, target.uuid);
     console.log('[nos-widgets] WidgetKit extension injected (appGroup=' + appGroup + ', deploymentTarget=' + DEPLOYMENT_TARGET + ').');
 };
 
@@ -287,6 +296,57 @@ function scanForFile(rootDir, fileName, maxDepth) {
         }
     })(rootDir, 0);
     return out;
+}
+
+// Register the injected extension target in the app's SHARED SCHEME so `xcodebuild -scheme archive`
+// builds it. On cordova-ios 7 the embed Copy-Files phase does NOT pull the extension into the build
+// graph (it does on cordova-ios 8), so the scheme entry is REQUIRED on MABS. node-xcode has no scheme
+// API, so the .xcscheme XML is edited directly. Idempotent (guards on the extension target uuid). The
+// scheme can live under the .xcworkspace OR the .xcodeproj depending on cordova-ios version.
+function addExtensionToSharedScheme(iosDir, projName, appName, extName, extTargetUuid) {
+    const candidates = [
+        path.join(iosDir, appName + '.xcworkspace', 'xcshareddata', 'xcschemes', appName + '.xcscheme'),
+        path.join(iosDir, projName, 'xcshareddata', 'xcschemes', appName + '.xcscheme')
+    ];
+    const schemeFile = candidates.find(function (p) {
+        try { return fs.statSync(p).isFile(); } catch (e) { return false; }
+    });
+    if (!schemeFile) {
+        console.warn('[nos-widgets] shared scheme not found (looked: ' + candidates.join(', ') +
+            '); the extension may not be built by -scheme archive.');
+        return;
+    }
+    let s = fs.readFileSync(schemeFile, 'utf8');
+    if (s.indexOf('BlueprintIdentifier = "' + extTargetUuid + '"') !== -1) {
+        console.log('[nos-widgets] extension already registered in shared scheme; skipping.');
+        return;
+    }
+    // Make sure implicit-dependency resolution is on too (belt-and-suspenders).
+    s = s.replace(/buildImplicitDependencies\s*=\s*"NO"/g, 'buildImplicitDependencies = "YES"');
+    const entry =
+        '      <BuildActionEntry\n' +
+        '         buildForTesting = "NO"\n' +
+        '         buildForRunning = "YES"\n' +
+        '         buildForProfiling = "YES"\n' +
+        '         buildForArchiving = "YES"\n' +
+        '         buildForAnalyzing = "YES">\n' +
+        '         <BuildableReference\n' +
+        '            BuildableIdentifier = "primary"\n' +
+        '            BlueprintIdentifier = "' + extTargetUuid + '"\n' +
+        '            BuildableName = "' + extName + '.appex"\n' +
+        '            BlueprintName = "' + extName + '"\n' +
+        '            ReferencedContainer = "container:' + projName + '">\n' +
+        '         </BuildableReference>\n' +
+        '      </BuildActionEntry>\n';
+    if (s.indexOf('<BuildActionEntries>') !== -1) {
+        // Insert the extension BEFORE the app entry so it is built first.
+        s = s.replace('<BuildActionEntries>', '<BuildActionEntries>\n' + entry);
+    } else {
+        console.warn('[nos-widgets] <BuildActionEntries> not found in scheme; cannot register extension.');
+        return;
+    }
+    fs.writeFileSync(schemeFile, s);
+    console.log('[nos-widgets] registered ' + extName + ' in shared scheme for -scheme archive: ' + schemeFile);
 }
 
 function getBundleIdFromConfig(projectRoot) {
