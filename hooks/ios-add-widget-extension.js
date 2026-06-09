@@ -72,7 +72,7 @@ module.exports = function (context) {
         teamId: pref('NosWidgetTeamId', 'NOS_WIDGET_TEAM_ID', ''),
         profileSpecifier: pref('NosWidgetProfileSpecifier', 'NOS_WIDGET_PROFILE_SPECIFIER', ''),
         profilePath: pref('NosWidgetProvisioningProfile', 'NOS_WIDGET_PROVISIONING_PROFILE', ''),
-        profileB64: pref('NosWidgetProvisioningProfileB64', 'NOS_WIDGET_PROVISIONING_PROFILE_B64', '')
+        profileB64: pref('NosWidgetMobileprovisionB64', 'NOS_WIDGET_MOBILEPROVISION_B64', '')
     };
 
     if (extensionTargetExists(proj)) {
@@ -129,8 +129,15 @@ module.exports = function (context) {
     });
 
     // 4. node-xcode's addTarget('app_extension') already creates the embed ("Copy Files") phase
-    //    that copies the .appex into the host app — re-adding it caused "Unexpected duplicate
-    //    tasks". It does NOT add the build-order dependency, so add only that here.
+    //    that copies the .appex into the host app — re-adding it caused "Unexpected duplicate tasks".
+    //    It does NOT add the build-order dependency. CAUTION: node-xcode's addTargetDependency only
+    //    writes anything if the PBXTargetDependency + PBXContainerItemProxy sections ALREADY exist
+    //    (its `if (sectionA && sectionB)` guard). A bare Cordova app has NEITHER, so without this the
+    //    dependency is silently dropped and `xcodebuild archive` never builds/embeds the extension
+    //    (the app ships with no widget). Create the sections first, then add app -> extension.
+    const pbxObjects = proj.hash.project.objects;
+    pbxObjects['PBXTargetDependency'] = pbxObjects['PBXTargetDependency'] || {};
+    pbxObjects['PBXContainerItemProxy'] = pbxObjects['PBXContainerItemProxy'] || {};
     proj.addTargetDependency(proj.getFirstTarget().uuid, [target.uuid]);
 
     // 5. Rung 1 (MABS): install the widget's provisioning profile into the build agent's profiles
@@ -229,18 +236,18 @@ function maybeInstallProvisioningProfile(projectRoot, profilePath, profileB64) {
             if (buf && buf.length > 500) {
                 src = path.join(os.tmpdir(), 'nos-widget.mobileprovision');
                 fs.writeFileSync(src, buf);
-                console.log('[nos-widgets] widget provisioning profile decoded from NOS_WIDGET_PROVISIONING_PROFILE_B64 (' + buf.length + ' bytes) -> ' + src);
+                console.log('[nos-widgets] widget provisioning profile decoded from NOS_WIDGET_MOBILEPROVISION_B64 (' + buf.length + ' bytes) -> ' + src);
             } else {
-                console.warn('[nos-widgets] NOS_WIDGET_PROVISIONING_PROFILE_B64 decoded to ' + (buf ? buf.length : 0) + ' bytes (too small); ignoring.');
+                console.warn('[nos-widgets] NOS_WIDGET_MOBILEPROVISION_B64 decoded to ' + (buf ? buf.length : 0) + ' bytes (too small); ignoring.');
             }
         } catch (e) {
-            console.warn('[nos-widgets] could not decode NOS_WIDGET_PROVISIONING_PROFILE_B64: ' + e.message);
+            console.warn('[nos-widgets] could not decode NOS_WIDGET_MOBILEPROVISION_B64: ' + e.message);
         }
     }
     if (!src) {
         console.warn('[nos-widgets] widget provisioning profile NOT found (tried path "' + (profilePath || '') +
             '" + project scan' + (profileB64 ? ' + base64' : '') + '). Skipping — the widget extension may fail ' +
-            'to sign on device. Set NOS_WIDGET_PROVISIONING_PROFILE_B64 to the base64 of the .mobileprovision ' +
+            'to sign on device. Set NOS_WIDGET_MOBILEPROVISION_B64 to the base64 of the .mobileprovision ' +
             '(guaranteed), or ensure the file reaches the build tree.');
         return;
     }
