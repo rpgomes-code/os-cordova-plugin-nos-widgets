@@ -631,6 +631,14 @@ function applyExtensionBuildSettings(proj, extBundleId, infoPlistName, extEntNam
             s.CODE_SIGN_ENTITLEMENTS = '"' + EXT_NAME + '/' + extEntName + '"';
             s.IPHONEOS_DEPLOYMENT_TARGET = DEPLOYMENT_TARGET;
             s.SWIFT_VERSION = '5.0';
+            // 0.15.0 ROBUSTNESS: a WidgetKit extension is pure Swift and needs NO ObjC bridging header.
+            // Explicitly CLEAR it on the extension target so the ext never inherits the app's project-level
+            // SWIFT_OBJC_BRIDGING_HEADER (set by cordova-plugin-add-swift-support, pointing at the app's
+            // *-Bridging-Header.h which #imports Cordova/ObjC plugin headers the extension cannot see). On
+            // toolchains/images that propagate that project-level setting, the extension's Swift precompile of
+            // the inherited header fails; an empty per-target value (which overrides the project value) makes
+            // the ext build robust. The app target keeps its own bridging header.
+            s.SWIFT_OBJC_BRIDGING_HEADER = '""';
             s.TARGETED_DEVICE_FAMILY = '"1,2"';
             s.GENERATE_INFOPLIST_FILE = 'NO';
             s.SKIP_INSTALL = 'YES';
