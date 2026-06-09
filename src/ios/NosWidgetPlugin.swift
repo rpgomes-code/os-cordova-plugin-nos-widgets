@@ -1,6 +1,10 @@
 import Foundation
 import WidgetKit
-import Cordova
+// NOTE: do NOT `import Cordova`. Under OutSystems/MABS there is no Swift module named "Cordova"
+// (CordovaLib is a static lib whose headers are exposed via the app's add-swift-support
+// Bridging-Header.h). CDVPlugin / CDVInvokedUrlCommand / CDVPluginResult resolve from that bridging
+// header — same as every other OutSystems Swift plugin (e.g. eSIM). Adding `import Cordova` breaks the
+// build with: "Unable to find module dependency: 'Cordova'".
 
 /// Cordova <-> Swift bridge (main app target). Exposed to OutSystems as Client Actions.
 /// Writes data into the App Group shared store that the WidgetKit extension reads, and
